@@ -69,6 +69,10 @@
         slots = [[0,0],[0,0],[0,0],[0,0],[0,0]];
         shakeCamera = 0;
         gridPos = []
+        delet = 100;
+        mouseDown = 0;
+        gridC = -1;
+        wantToPlace = false;
         
         // Consts
         FONT     = "Consolas";
@@ -101,7 +105,7 @@
         ]
         
         // Game grid
-        cubeGrid = Array(GRIDSIZE**2).fill({'type':'none'})
+        cubeGrid = Array(GRIDSIZE**2).fill({'type':'none','destructable':false})
         
         /*
             ######################################################
@@ -247,7 +251,17 @@
         cur.position   = vec3(0, 0, 2);
         cur.material   = curMat;
         cur.isPickable = false
-
+        
+        // Create glow layer
+        var gl = new BABYLON.GlowLayer("", scene);
+        gl.customEmissiveColorSelector = (mesh, subMesh, material, result) => {
+            if(mesh.name == "laserLines"){
+                result.set(0,0.5,1,1);
+            } else {
+                result.set(0,0,0,0);
+            }
+        }
+            
         /*
             ######################################################
             ### Text drawing functions
@@ -335,24 +349,50 @@
         
         /*
             ######################################################
-            ### Placing objects
+            ### Placing/Deleting objects
         */
        
         placeSmth = (a_slot) => {
             if(slots[slotC][0] != 0 && slots[slotC][1] > 0 && cubeGrid[a_slot]["type"] == "none"){
                 switch(slots[slotC][0]){
                     case 10:
-                        x = BABYLON.MeshBuilder.CreateBox("reflector", {}, scene);
+                        x = BABYLON.MeshBuilder.CreateBox("reflector"+a_slot, {}, scene);
                         x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]-1);
                         x.scaling  = vec3(GRIDWID-0.5, 0.1, 0.5);
                         x.rotation = vec3(0,0,Math.PI*0.25)
                         x.material = reflMat;
                         x.isPickable = false
-                        cubeGrid[a_slot] = {"type":"reflector","how":0,"destructable":false}
+                        cubeGrid[a_slot] = {"type":"reflector","how":0,"destructable":true}
                         break;
                 }
                 slots[slotC][1]--;
                 changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
+                startLaser()
+            }
+        }
+        
+        addItem = (a_type) => {
+            for(var i=0; i<5; i++){
+                if(slots[i][0] == a_type){
+                    slots[i][1]++;
+                    changeText("slotS"+i,slots[i][1],7,C[1],32);
+                    break
+                }
+            }
+        }
+        
+        deleteSmth = (a_slot) => {
+            if(cubeGrid[a_slot]["destructable"]){
+                switch(cubeGrid[a_slot]["type"]){
+                    case "reflector":
+                        var a = scene.getMeshByName("reflector"+a_slot);
+                        if(a){
+                            a.dispose()
+                            cubeGrid[a_slot] = {"type":"none"}
+                            addItem(10)
+                        }
+                        break;
+                }
                 startLaser()
             }
         }
@@ -378,48 +418,48 @@
                     switch(dir){
                         case 0:
                             if(slote+GRIDSIZE > GRIDSIZE**2){
-                                isFine = false
+                                isFine = 0;
                                 pos[1] += GRIDWID/2;
                             } else {
-                                slote += GRIDSIZE
+                                slote += GRIDSIZE;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 3
+                                    dir = 3;
                                 }
                                 pos[1] += GRIDWID;
                             }
                             break;
                         case 1:
                             if((slote-1)%GRIDSIZE > slote%GRIDSIZE){
-                                isFine = false
+                                isFine = 0;
                                 pos[0] -= GRIDWID/2;
                             } else {
-                                slote -= 1
+                                slote -= 1;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 2
+                                    dir = 2;
                                 }
                                 pos[0] -= GRIDWID;
                             }
                             break;
                         case 2:
                             if(slote-GRIDSIZE < 0){
-                                isFine = false
+                                isFine = 0;
                                 pos[1] -= GRIDWID/2;
                             } else {
-                                slote -= GRIDSIZE
+                                slote -= GRIDSIZE;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 1
+                                    dir = 1;
                                 }
                                 pos[1] -= GRIDWID;
                             }
                             break;
                         case 3:
                             if((slote+1)%GRIDSIZE < slote%GRIDSIZE){
-                                isFine = false
+                                isFine = 0;
                                 pos[0] += GRIDWID/2;
                             } else {
-                                slote += 1
+                                slote += 1;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 0
+                                    dir = 0;
                                 }
                                 pos[0] += GRIDWID;
                             }
@@ -431,7 +471,8 @@
                 for(var j=0;j<path.length;j++){
                     path[j] = {'x':path[j][0],'y':path[j][1],'z':path[j][2]};
                 }
-                var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: path}, scene);
+                var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: path, useVertexAlpha: false}, scene);
+                zz.isPickable = false
             }
         }
         
@@ -507,13 +548,13 @@
                             case 2:
                             case 3:
                             case 4:
-                                createEntr(slotk, LEVELS[level][1][blk]-1)
+                                createEntr(slotk, LEVELS[level][1][blk]-1);
                                 break;
                             case 5:
                             case 6:
                             case 7:
                             case 8:
-                                createExit(slotk, LEVELS[level][1][blk]-5)
+                                createExit(slotk, LEVELS[level][1][blk]-5);
                                 break;
                             case 9:
                                 x = BABYLON.MeshBuilder.CreateBox("gridWall", {}, scene);
@@ -664,6 +705,23 @@
                     break;
             }
             
+            if(wantToPlace){
+                if(mouseDown){
+                    if(delet > 0){
+                        delet -= scene.getAnimationRatio()
+                    } else {
+                        deleteSmth(gridC)
+                        wantToPlace = false;
+                        delet = 30;
+                    }
+                } else {
+                    placeSmth(gridC)
+                    wantToPlace = false;
+                    delet = 30;
+                }
+            }
+            
+            
             // Render scene
             scene.render();
         });
@@ -698,16 +756,30 @@
                     chooseSlot(3)
                 } else if(nme == "slot4" || nme == "slotT4" || nme == "slotS4"){
                     chooseSlot(4)
-                } else if(nme.split("Z")[0] == "grid"){
-                    placeSmth(Number(nme.split("Z")[1]))
-                }
+                } 
             }
             
-            can.requestPointerLock = can.requestPointerLock ||
-            can.mozRequestPointerLock ||
-            can.webkitRequestPointerLock;
             // Ask the browser to lock the pointer
+            can.requestPointerLock = can.requestPointerLock || can.mozRequestPointerLock || can.webkitRequestPointerLock;
             can.requestPointerLock();
+        })
+        
+        can.addEventListener("pointerdown", ()=>{
+            mouseDown=1;
+            var pi = scene.pick(can.width/2, can.height/2);
+            if(pi.pickedMesh){
+                var nme = pi.pickedMesh.name;
+                if(nme.split("Z")[0] == "grid"){
+                    var u = Number(nme.split("Z")[1])
+                    if(cubeGrid[u]["type"] == "none" || cubeGrid[u]["destructable"]){
+                        wantToPlace = true;
+                        gridC = u;
+                    }
+                }
+            }
+        })
+        can.addEventListener("pointerup", ()=>{
+            mouseDown=0;
         })
         /*
             FOR LATER USE
