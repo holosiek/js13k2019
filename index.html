@@ -101,8 +101,8 @@
         ]
         
         // Game grid
-        cubeGrid = Array(GRIDSIZE**2).fill({'type':'none'})//Array(GRIDSIZE).fill().map(()=>Array(GRIDSIZE).fill(0));
-
+        cubeGrid = Array(GRIDSIZE**2).fill({'type':'none'})
+        
         /*
             ######################################################
             ### Misc functions
@@ -220,20 +220,10 @@
         // Create highlight layer
         hl = new BABYLON.HighlightLayer("hl1", scene);
         
-        // Check if there is VR
-        var headset;
-        navigator.getVRDisplays().then(displays => {
-            if(displays[0]){
-                headset = displays[0];
-            }
-        });
-        if(headset){
-            camera = new BABYLON.WebVRFreeCamera("camera", camOff, scene);
-        } else {
-            camera = new BABYLON.FreeCamera("camera", camOff, scene);
-            camera.inertia = 0
-            camera.angularSensibility = 300
-        }
+        // Create camera
+        camera = new BABYLON.FreeCamera("camera", camOff, scene);
+        camera.inertia = 0
+        camera.angularSensibility = 300
         
         // Target camera at 0,0,0
         camera.setTarget(BABYLON.Vector3.Zero());
@@ -295,6 +285,34 @@
         
         /*
             ######################################################
+            ### Handle slots
+        */
+
+        chooseSlot = (x) => {
+            slotC = x
+            for(var i=0; i<5; i++){
+                var m = scene.getMeshByName("slot"+i)
+                if(i==x){
+                    m.material = selSlot;
+                    m.visibility = 0.98;
+                } else {
+                    m.visibility = (slots[i][0] != 0)?0.98:0.5;
+                    m.material   = eqSlot
+                }
+            }
+        }
+        
+        whatName = (x) => {
+            switch(x){
+                case 10:
+                    return S[3];
+                default:
+                    return "";
+            }
+        }
+        
+        /*
+            ######################################################
             ### Easing animation
         */
         
@@ -317,18 +335,47 @@
         
         /*
             ######################################################
+            ### Placing objects
+        */
+       
+        placeSmth = (a_slot) => {
+            if(slots[slotC][0] != 0 && slots[slotC][1] > 0 && cubeGrid[a_slot]["type"] == "none"){
+                switch(slots[slotC][0]){
+                    case 10:
+                        x = BABYLON.MeshBuilder.CreateBox("reflector", {}, scene);
+                        x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]-1);
+                        x.scaling  = vec3(GRIDWID-0.5, 0.1, 0.5);
+                        x.rotation = vec3(0,0,Math.PI*0.25)
+                        x.material = reflMat;
+                        x.isPickable = false
+                        cubeGrid[a_slot] = {"type":"reflector","how":0,"destructable":false}
+                        break;
+                }
+                slots[slotC][1]--;
+                changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
+                startLaser()
+            }
+        }
+       
+        /*
+            ######################################################
             ### Process level
         */
         
         startLaser = () => {
+            let a = scene.getMeshByName("laserLines")
+            if(a){
+                a.dispose()
+            }
             for(var i=0; i<lasers.length; i++){
                 var path = []
                 var slote = lasers[i]["slot"];
                 var pos = gridPos[lasers[i]["slot"]].slice();
+                var dir = lasers[i]["dir"]
                 path.push(pos.slice());
                 isFine = 100
                 while(isFine){
-                    switch(lasers[i]["dir"]){
+                    switch(dir){
                         case 0:
                             if(slote+GRIDSIZE > GRIDSIZE**2){
                                 isFine = false
@@ -336,7 +383,7 @@
                             } else {
                                 slote += GRIDSIZE
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    lasers[i]["dir"] = 3
+                                    dir = 3
                                 }
                                 pos[1] += GRIDWID;
                             }
@@ -348,7 +395,7 @@
                             } else {
                                 slote -= 1
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    lasers[i]["dir"] = 0
+                                    dir = 2
                                 }
                                 pos[0] -= GRIDWID;
                             }
@@ -360,7 +407,7 @@
                             } else {
                                 slote -= GRIDSIZE
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    lasers[i]["dir"] = 1
+                                    dir = 1
                                 }
                                 pos[1] -= GRIDWID;
                             }
@@ -372,7 +419,7 @@
                             } else {
                                 slote += 1
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    lasers[i]["dir"] = 2
+                                    dir = 0
                                 }
                                 pos[0] += GRIDWID;
                             }
@@ -382,9 +429,8 @@
                     path.push(pos.slice());
                 }
                 for(var j=0;j<path.length;j++){
-                    path[j] = {'x':path[j][0],'y':path[j][1],'z':path[j][2]-0.5};
+                    path[j] = {'x':path[j][0],'y':path[j][1],'z':path[j][2]};
                 }
-                console.log(path)
                 var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: path}, scene);
             }
         }
@@ -476,15 +522,6 @@
                                 x.material = wallMat;
                                 x.isPickable = false
                                 break;
-                            case 10:
-                                x = BABYLON.MeshBuilder.CreateBox("reflector", {}, scene);
-                                x.position = vec3(gridPos[slotk][0],gridPos[slotk][1],gridPos[slotk][2]-1);
-                                x.scaling  = vec3(GRIDWID-0.5, 0.1, 0.5);
-                                x.rotation = vec3(0,0,Math.PI*0.25)
-                                x.material = reflMat;
-                                x.isPickable = false
-                                cubeGrid[slotk] = {"type":"reflector","how":"\\","destructable":false}
-                                break;
                             default:
                                 x = BABYLON.MeshBuilder.CreateBox("gridPoz", {}, scene);
                                 x.position = vec3(gridPos[slotk][0],gridPos[slotk][1],gridPos[slotk][2]);
@@ -499,6 +536,12 @@
                     slotk++;
                 }while(slotk%32 != 0);
             }
+            for(var i=0; i<LEVELS[level][2].length; i+=2){
+                slots[Math.floor(i/2)] = [LEVELS[level][2][i], LEVELS[level][2][i+1]]
+                changeText("slotT"+Math.floor(i/2),whatName(LEVELS[level][2][i]),7,C[0],36)
+                changeText("slotS"+Math.floor(i/2),LEVELS[level][2][i+1],7,C[1],32)
+            }
+            chooseSlot(0)
         }
         
         /*
@@ -513,7 +556,7 @@
                     plane.position   = vec3(24, 6-i*3.25, -30);
                     plane.visibility = 0.5;
                     drawText("slotT"+i, "", C[0], 7, vec3(20.5, 6.5-i*3.25, -32.5), Math.PI*0.8, 30);
-                    drawText("slotS"+i, "", C[0], 7, vec3(20.5, 5.75-i*3.25, -32.5), Math.PI*0.8, 36);
+                    drawText("slotS"+i, "", C[0], 7, vec3(20.5, 5.6-i*3.25, -32.5), Math.PI*0.8, 36);
                     plane.material   = eqSlot
                     plane.rotation.y = Math.PI*0.8;
             }
@@ -565,7 +608,7 @@
                 x.visibility = 0.9
             for(var i=0; i<GRIDSIZE; i++){
                 for(var j=0; j<GRIDSIZE; j++){
-                    let x = BABYLON.MeshBuilder.CreateBox("grid", {}, scene);
+                    let x = BABYLON.MeshBuilder.CreateBox("gridZ"+(i*8+j), {}, scene);
                         x.position = vec3(GRIDWID*(j-GRIDSIZE/2)+GRIDWID/2, GRIDWID*(i-GRIDSIZE/2)+GRIDWID/2, -45);
                         gridPos.push([GRIDWID*(j-GRIDSIZE/2)+GRIDWID/2, GRIDWID*(i-GRIDSIZE/2)+GRIDWID/2, -44])
                         x.scaling  = vec3(GRIDWID-0.25, GRIDWID-0.25, 0.25);
@@ -574,25 +617,6 @@
                 }
             }
             processLevel();
-        }
-        
-        /*
-            ######################################################
-            ### Handle slots
-        */
-
-        chooseSlot = (x) => {
-            slotC = x
-            for(var i=0; i<5; i++){
-                var m = scene.getMeshByName("slot"+i)
-                if(i==x){
-                    m.material = selSlot;
-                    m.visibility = 0.98;
-                } else {
-                    m.visibility = (slots[i][0] != 0)?0.98:0.5;
-                    m.material   = eqSlot
-                }
-            }
         }
         
         /*
@@ -674,6 +698,8 @@
                     chooseSlot(3)
                 } else if(nme == "slot4" || nme == "slotT4" || nme == "slotS4"){
                     chooseSlot(4)
+                } else if(nme.split("Z")[0] == "grid"){
+                    placeSmth(Number(nme.split("Z")[1]))
                 }
             }
             
@@ -688,6 +714,7 @@
             
             changeText("storage",actS+"/"+maxS+" B",10,"#ffffff")
             scene.getAnimationRatio()
+            if (/slot[ST]?4/.test(nme))
         */
     </script>
 </html>
