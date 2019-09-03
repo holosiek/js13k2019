@@ -61,18 +61,24 @@
         var eqSlot, selGrid, nonGrid, curMat, wallMat, entrMat, reflMat, selSlot;
         
         // Game vars
-        actS = 0;
-        maxS = 13312;
-        slotC = -1;
-        level = 1;
-        lasers = [];
-        slots = [[0,0],[0,0],[0,0],[0,0],[0,0]];
-        shakeCamera = 0;
-        gridPos = []
-        delet = 100;
-        mouseDown = 0;
-        gridC = -1;
-        wantToPlace = false;
+        shakeCamera = 0;   // Camera shake level (0-3)
+        
+        actS = 0;      // Current memory size
+        maxS = 13312;  // Total memory size
+        dmgBuff = 0;   // Total damaged memory
+        level = 0;     // Level we are playing right now
+        exits = [0,0]  // Exited sucessfully/total exits
+        
+        slots = [[0,0],[0,0],[0,0],[0,0],[0,0]]; // Slot information
+        slotC = -1;                              // Choosen toolbar slot
+        
+        gridPos = [];  // Position of all grid slots
+        lasers = [];   // All created lasers
+        
+        delet = 40;           // Time to delete object
+        mouseDown = 0;        // Is mouse down on canvas
+        gridC = -1;           // Choosen grid slot
+        wantToPlace = false;  // Do we want to place smth on the grid
         
         // Consts
         FONT     = "Consolas";
@@ -83,7 +89,7 @@
             0 - logoLabel
             1 - memoryLabel
             2 - toolbarLabel
-            3 - \ reflector
+            3 - reflector
         */
         S = [
             "Click here to start playing", 
@@ -420,6 +426,8 @@
         */
         
         startLaser = () => {
+            dmgBuff = 0;
+            exits[0] = 0;
             let a = scene.getMeshByName("laserLines")
             if(a){
                 a.dispose()
@@ -436,48 +444,84 @@
                         case 0:
                             if(slote+GRIDSIZE > GRIDSIZE**2){
                                 isFine = 0;
+                                dmgBuff++;
                                 pos[1] += GRIDWID/2;
                             } else {
                                 slote += GRIDSIZE;
-                                if(cubeGrid[slote]["type"] == "reflector"){
+                                var z = cubeGrid[slote]["type"];
+                                if(z == "reflector"){
                                     dir = 3-2*cubeGrid[slote]["how"];
-                                }
+                                } else if(z == "wall" || z == "entry"){
+                                    isFine = 0;
+                                } else if(z == "exit"){
+                                    if(cubeGrid[slote]["where"] == 2){
+                                        exits[0]++;
+                                    }
+                                    isFine = 0;
+                                } 
                                 pos[1] += GRIDWID;
                             }
                             break;
                         case 1:
                             if((slote-1)%GRIDSIZE > slote%GRIDSIZE){
                                 isFine = 0;
+                                dmgBuff++;
                                 pos[0] -= GRIDWID/2;
                             } else {
                                 slote -= 1;
-                                if(cubeGrid[slote]["type"] == "reflector"){
+                                var z = cubeGrid[slote]["type"];
+                                if(z == "reflector"){
                                     dir = 2-2*cubeGrid[slote]["how"];
-                                }
+                                } else if(z == "wall" || z == "entry"){
+                                    isFine = 0;
+                                } else if(z == "exit"){
+                                    if(cubeGrid[slote]["where"] == 3){
+                                        exits[0]++;
+                                    }
+                                    isFine = 0;
+                                } 
                                 pos[0] -= GRIDWID;
                             }
                             break;
                         case 2:
                             if(slote-GRIDSIZE < 0){
                                 isFine = 0;
+                                dmgBuff++;
                                 pos[1] -= GRIDWID/2;
                             } else {
                                 slote -= GRIDSIZE;
-                                if(cubeGrid[slote]["type"] == "reflector"){
+                                var z = cubeGrid[slote]["type"];
+                                if(z == "reflector"){
                                     dir = 1+2*cubeGrid[slote]["how"];
-                                }
+                                } else if(z == "wall" || z == "entry"){
+                                    isFine = 0;
+                                } else if(z == "exit"){
+                                    if(cubeGrid[slote]["where"] == 0){
+                                        exits[0]++;
+                                    }
+                                    isFine = 0;
+                                } 
                                 pos[1] -= GRIDWID;
                             }
                             break;
                         case 3:
                             if((slote+1)%GRIDSIZE < slote%GRIDSIZE){
                                 isFine = 0;
+                                dmgBuff++;
                                 pos[0] += GRIDWID/2;
                             } else {
                                 slote += 1;
-                                if(cubeGrid[slote]["type"] == "reflector"){
+                                var z = cubeGrid[slote]["type"];
+                                if(z == "reflector"){
                                     dir = 0+2*cubeGrid[slote]["how"];
-                                }
+                                } else if(z == "wall" || z == "entry"){
+                                    isFine = 0;
+                                } else if(z == "exit"){
+                                    if(cubeGrid[slote]["where"] == 1){
+                                        exits[0]++;
+                                    }
+                                    isFine = 0;
+                                } 
                                 pos[0] += GRIDWID;
                             }
                             break;
@@ -491,10 +535,18 @@
                 var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: path, useVertexAlpha: false}, scene);
                 zz.isPickable = false
             }
+            if(exits[0]==exits[1] && exits[1] != 0){
+                if(++level!=LEVELS.length){
+                    processLevel();
+                } else {
+                    resetLevel()
+                    console.log("!")
+                }
+            }
         }
         
         createEntr = (a_slot, a_fau) => {
-            var y = BABYLON.MeshBuilder.CreateBox("gridEntryFaucet", {}, scene);
+            var y = BABYLON.MeshBuilder.CreateBox("gridEntryFaucet"+a_slot, {}, scene);
                 y.scaling  = vec3(0.4, 0.4, 1.5);
                 y.material = entrMat;
                 y.isPickable = false
@@ -520,7 +572,7 @@
                     lasers.push({"slot":a_slot,"dir":3})
                     break;
             }
-            var x = BABYLON.MeshBuilder.CreateBox("gridEntry", {}, scene);
+            var x = BABYLON.MeshBuilder.CreateBox("gridEntry"+a_slot, {}, scene);
                 x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]);
                 x.scaling  = vec3(GRIDWID-2, GRIDWID-2, 2);
                 x.material = entrMat;
@@ -528,32 +580,80 @@
         }
         
         createExit = (a_slot, a_fau) => {
-            var y = BABYLON.MeshBuilder.CreateBox("gridExitFaucet", {}, scene);
+            var y = BABYLON.MeshBuilder.CreateBox("gridExitFaucet"+a_slot, {}, scene);
                 y.scaling  = vec3(0.4, 0.4, 1.5);
                 y.material = exitMat;
                 y.isPickable = false
             switch(a_fau){
                 case 0:
                     y.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1]+1,gridPos[a_slot][2]);
+                    cubeGrid[a_slot] = {"type":"exit","where":0,"destructable":false}
                     break;
                 case 1:
                     y.position = vec3(gridPos[a_slot][0]-1,gridPos[a_slot][1],gridPos[a_slot][2]);
+                    cubeGrid[a_slot] = {"type":"exit","where":1,"destructable":false}
                     break;
                 case 2:
                     y.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1]-1,gridPos[a_slot][2]);
+                    cubeGrid[a_slot] = {"type":"exit","where":2,"destructable":false}
                     break;
                 case 3:
                     y.position = vec3(gridPos[a_slot][0]+1,gridPos[a_slot][1],gridPos[a_slot][2]);
+                    cubeGrid[a_slot] = {"type":"exit","where":3,"destructable":false}
                     break;
             }
-            var x = BABYLON.MeshBuilder.CreateBox("gridExit", {}, scene);
+            exits[1]++;
+            var x = BABYLON.MeshBuilder.CreateBox("gridExit"+a_slot, {}, scene);
                 x.position = vec3(gridPos[a_slot][0], gridPos[a_slot][1], gridPos[a_slot][2]);
                 x.scaling  = vec3(GRIDWID-2, GRIDWID-2, 2);
                 x.material = exitMat;
                 x.isPickable = false
         }
         
+        createWall = (a_slot) => {
+            var x = BABYLON.MeshBuilder.CreateBox("gridWall"+a_slot, {}, scene);
+                x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]);
+                x.scaling  = vec3(GRIDWID-0.5, GRIDWID-0.5, 2);
+                x.material = wallMat;
+                x.isPickable = false;
+            cubeGrid[a_slot] = {"type":"wall","destructable":false}
+        }
+        
+        resetLevel = () => {
+            // Reset variables
+            exits = [0,0];
+            lasers = [];
+            slots = [[0,0],[0,0],[0,0],[0,0],[0,0]];
+            for(var i=0; i<GRIDSIZE**2; i++){
+                cubeGrid[i] = {'type':'none','destructable':false};
+            }
+            
+            // Clear meshes
+            var names = []
+            scene.meshes.forEach(m=>{
+                if(/gridExitFaucet[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(/gridExit[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(/gridEntryFaucet[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(/gridEntry[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(/gridWall[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(/reflector[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(m.name == "laserLines"){
+                    names.push(m.name)
+                }
+            });
+            names.forEach(m=>{
+                scene.getMeshByName(m).dispose()
+            })
+        }
+        
         processLevel = () => {
+            resetLevel();
             var data = LEVELS[level][0];
             var slotk = 0;
             var blk = 0;
@@ -574,11 +674,7 @@
                                 createExit(slotk, LEVELS[level][1][blk]-5);
                                 break;
                             case 9:
-                                x = BABYLON.MeshBuilder.CreateBox("gridWall", {}, scene);
-                                x.position = vec3(gridPos[slotk][0],gridPos[slotk][1],gridPos[slotk][2]);
-                                x.scaling  = vec3(GRIDWID-0.5, GRIDWID-0.5, 2);
-                                x.material = wallMat;
-                                x.isPickable = false
+                                createWall(slotk);
                                 break;
                             default:
                                 x = BABYLON.MeshBuilder.CreateBox("gridPoz", {}, scene);
@@ -599,7 +695,7 @@
                 changeText("slotT"+Math.floor(i/2),whatName(LEVELS[level][2][i]),7,C[0],36)
                 changeText("slotS"+Math.floor(i/2),LEVELS[level][2][i+1],7,C[1],32)
             }
-            chooseSlot(0)
+            chooseSlot(0);
         }
         
         /*
@@ -722,6 +818,7 @@
                     break;
             }
             
+            // Check if we can place smth
             if(wantToPlace){
                 if(mouseDown){
                     if(delet > 0){
@@ -738,6 +835,14 @@
                 }
             }
             
+            // Deal damage to memory
+            if(dmgBuff){
+                shakeCamera = (dmgBuff>3)?3:dmgBuff;
+                actS+=dmgBuff;
+                changeText("storage",actS+"/"+maxS+" B",10,"#ffffff")
+            } else {
+                shakeCamera = 0;
+            }
             
             // Render scene
             scene.render();
@@ -763,47 +868,58 @@
                 var nme = pi.pickedMesh.name;
                 if(nme == "logoClick"){
                     startGame(pi.pickedMesh);
-                } else if(nme == "slot0" || nme == "slotT0" || nme == "slotS0"){
-                    chooseSlot(0)
-                } else if(nme == "slot1" || nme == "slotT1" || nme == "slotS1"){
-                    chooseSlot(1)
-                } else if(nme == "slot2" || nme == "slotT2" || nme == "slotS2"){
-                    chooseSlot(2)
-                } else if(nme == "slot3" || nme == "slotT3" || nme == "slotS3"){
-                    chooseSlot(3)
-                } else if(nme == "slot4" || nme == "slotT4" || nme == "slotS4"){
-                    chooseSlot(4)
+                } else if(/slot[ST]?0/.test(nme)){
+                    chooseSlot(0);
+                } else if(/slot[ST]?1/.test(nme)){
+                    chooseSlot(1);
+                } else if(/slot[ST]?2/.test(nme)){
+                    chooseSlot(2);
+                } else if(/slot[ST]?3/.test(nme)){
+                    chooseSlot(3);
+                } else if(/slot[ST]?4/.test(nme)){
+                    chooseSlot(4);
                 } 
             }
             
             // Ask the browser to lock the pointer
             can.requestPointerLock = can.requestPointerLock || can.mozRequestPointerLock || can.webkitRequestPointerLock;
             can.requestPointerLock();
-        })
+        });
+        
+        /*
+            ######################################################
+            ### Canvas Events
+        */
         
         can.addEventListener("pointerdown", ()=>{
-            mouseDown=1;
+            mouseDown = 1;
             var pi = scene.pick(can.width/2, can.height/2);
             if(pi.pickedMesh){
                 var nme = pi.pickedMesh.name;
                 if(nme.split("Z")[0] == "grid"){
-                    var u = Number(nme.split("Z")[1])
+                    var u = Number(nme.split("Z")[1]);
                     if(cubeGrid[u]["type"] == "none" || cubeGrid[u]["destructable"]){
                         wantToPlace = true;
                         gridC = u;
                     }
                 }
             }
-        })
+        });
+        
         can.addEventListener("pointerup", ()=>{
             mouseDown=0;
-        })
+        });
+        
         /*
             FOR LATER USE
             
-            changeText("storage",actS+"/"+maxS+" B",10,"#ffffff")
             scene.getAnimationRatio()
-            if (/slot[ST]?4/.test(nme))
+        */
+       
+        /*
+            ### Special thanks to:
+            @Jorengarenar (https://github.com/Jorengarenar)
+            - for regex example
         */
     </script>
 </html>
