@@ -80,6 +80,8 @@
         gridC = -1;           // Choosen grid slot
         wantToPlace = false;  // Do we want to place smth on the grid
         
+        var vojc;      // English voice
+        
         // Consts
         FONT     = "Consolas";
         GRIDSIZE = 8;
@@ -126,8 +128,11 @@
             return new BABYLON.Color3(r, g, b);
         }
         
-        mate = (a_id) => {
-            return new BABYLON.StandardMaterial(a_id, scene);
+        mate = (a_id, a_color, a_disLight=false) => {
+            let a = new BABYLON.StandardMaterial(a_id, scene);
+                a.emissiveColor = a_color;
+                a.disableLighting = a_disLight;
+            return a;
         }
         
         vec3 = (x, y, z) => {
@@ -139,71 +144,53 @@
             return (Math.random()<=0.5)?r:-r;
         }
         
+        copyObj = (a_obj) => {
+            return JSON.parse(JSON.stringify(a_obj));
+        }
+        
         /*
             ######################################################
             ### Material creation
         */
        
-        materialCreation = ()=>{
+        materialCreation = () => {
             // Create colorful materials
             for(var i=0; i<5; i++){
-                var mati = mate("logoMat");
-                //mati.emissiveColor = new BABYLON.Color3(0.3+i*0.05,0.7+i*0.025,1);
-                mati.emissiveColor   = tex(0.5+i*0.05, 0.9+i*0.025, 1);
-                mati.disableLighting = true;
-                logoMaterials.push(mati);
+                logoMaterials.push(mate("logoMat", tex(0.5+i*0.05, 0.9+i*0.025, 1), true));
             }
             
             // Create data materials
             for(var i=0; i<5; i++){
-                var mati = mate("dataMat");
-                mati.emissiveColor   = tex(0.3+i*0.05, 0.7+i*0.05, 1);
-                mati.disableLighting = true;
-                dataMaterials.push(mati);
+                dataMaterials.push(mate("dataMat", tex(0.3+i*0.05, 0.7+i*0.05, 1), true));
             }
             
             // cursor material
-            curMat = mate("curMat");
-            curMat.emissiveColor   = tex(1, 1, 1);
-            curMat.disableLighting = true;
+            curMat  = mate("curMat", tex(1, 1, 1), true);
             
             // equiped slot material
-            eqSlot = mate("eqSlot");
-            eqSlot.emissiveColor   = tex(0.07, 0.07, 0.12);
-            eqSlot.disableLighting = true;
+            eqSlot  = mate("eqSlot", tex(0.07, 0.07, 0.12), true);
             
             // selected slot material
-            selSlot = mate("selSlot");
-            selSlot.emissiveColor   = tex(0.1, 0.1, 0.15);
-            selSlot.disableLighting = true;
+            selSlot = mate("selSlot", tex(0.1, 0.1, 0.15), true);
             
             // selected grid
-            selGrid = mate("selGrid");
-            selGrid.emissiveColor   = tex(0.035, 0.12, 0.22);
-            selGrid.disableLighting = true;
+            selGrid = mate("selGrid", tex(0.035, 0.12, 0.22), true);
             
             // non-selected grid
-            nonGrid = mate("nonGrid");
-            nonGrid.emissiveColor   = tex(0.02, 0.02, 0.05);//tex(0.025, 0.08, 0.15);
-            nonGrid.disableLighting = true;
-            nonGrid.alpha = 0.7
+            nonGrid = mate("nonGrid", tex(0.02, 0.02, 0.05), true);
+            nonGrid.alpha = 0.7;
             
             // wall material
-            wallMat = mate("wallMat");
-            wallMat.emissiveColor   = tex(0.6, 0.6, 0.6);
-            wallMat.disableLighting = true;
+            wallMat = mate("wallMat", tex(0.6, 0.6, 0.6), true);
             
             // reflector material
-            reflMat = mate("reflMat");
-            reflMat.emissiveColor   = tex(0.8, 0.8, 0.8);
+            reflMat = mate("reflMat", tex(0.8, 0.8, 0.8));
             
             // entry material
-            entrMat = mate("entrMat");
-            entrMat.emissiveColor   = tex(0, 0.5, 1);
+            entrMat = mate("entrMat", tex(0, 0.5, 1));
             
             // exit material
-            exitMat = mate("exitMat");
-            exitMat.emissiveColor   = tex(0.5, 0.1, 0.1);
+            exitMat = mate("exitMat", tex(0.5, 0.1, 0.1));
         }
         
         /*
@@ -211,62 +198,99 @@
             ### Scene creation
         */
        
-        // Create new scene and add needed options
-        scene = new BABYLON.Scene(engine);
-        scene.constantlyUpdateMeshUnderPointer = true;
-        
-        // Set fog
-        scene.fogMode  = 3; //BABYLON.Scene.FOGMODE_LINEAR
-        scene.fogStart = 50;
-        scene.fogEnd   = 75;
+        createScene = () => {
+            // Create new scene and add needed options
+            scene = new BABYLON.Scene(engine);
+            scene.constantlyUpdateMeshUnderPointer = true;
+            
+            // Set fog
+            scene.fogMode  = 3; //BABYLON.Scene.FOGMODE_LINEAR
+            scene.fogStart = 50;
+            scene.fogEnd   = 75;
 
-        // set background
-        scene.clearColor = tex(0.05, 0.05, 0.1);
-        
-        // Set global light
-        g_light = new BABYLON.PointLight("light", camOff, scene);
-        g_light.intensity = 0.17;
-        
-        // Create highlight layer
-        hl = new BABYLON.HighlightLayer("hl1", scene);
-        
-        // Create camera
-        camera = new BABYLON.FreeCamera("camera", camOff, scene);
-        camera.inertia = 0
-        camera.angularSensibility = 300
-        
-        // Target camera at 0,0,0
-        camera.setTarget(BABYLON.Vector3.Zero());
-        camera.attachControl(can, true);
-        camera.inputs.remove(camera.inputs.attached.keyboard);
-        
-        materialCreation()
-        
-        // Create background data blocks
-        for(var i=0; i<200; i++){
-            pl = BABYLON.MeshBuilder.CreatePlane("data", {sideOrientation: 1}, scene)
-            pl.position  = vec3(Math.random()*100-50, Math.random()*30-13, -60-Math.random()*5);
-            pl.material  = dataMaterials[ranRng(5)];
-            pl.scaling.x = 3
-        }
-        
-        // Create cursor pointer
-        cur = BABYLON.MeshBuilder.CreateBox("cursor", {}, scene);
-        cur.scaling    = vec3(0.01, 0.01, 0.01)
-        cur.parent     = camera
-        cur.position   = vec3(0, 0, 2);
-        cur.material   = curMat;
-        cur.isPickable = false
-        
-        // Create glow layer
-        var gl = new BABYLON.GlowLayer("", scene);
-        gl.customEmissiveColorSelector = (mesh, subMesh, material, result) => {
-            if(mesh.name == "laserLines"){
-                result.set(0,0.5,1,1);
-            } else {
-                result.set(0,0,0,0);
+            // set background
+            scene.clearColor = tex(0.05, 0.05, 0.1);
+            
+            // Set global light
+            g_light = new BABYLON.PointLight("light", camOff, scene);
+            g_light.intensity = 0.17;
+            
+            // Create highlight layer
+            hl = new BABYLON.HighlightLayer("hl1", scene);
+            
+            // Create camera
+            camera = new BABYLON.FreeCamera("camera", camOff, scene);
+            camera.inertia = 0
+            camera.angularSensibility = 300
+            
+            // Target camera at 0,0,0
+            camera.setTarget(BABYLON.Vector3.Zero());
+            camera.attachControl(can, true);
+            camera.inputs.remove(camera.inputs.attached.keyboard);
+            
+            materialCreation()
+            
+            // Create background data blocks
+            for(var i=0; i<200; i++){
+                pl = BABYLON.MeshBuilder.CreatePlane("data", {sideOrientation: 1}, scene)
+                pl.position  = vec3(Math.random()*100-50, Math.random()*30-13, -60-Math.random()*5);
+                pl.material  = dataMaterials[ranRng(5)];
+                pl.scaling.x = 3
+            }
+            
+            // Create cursor pointer
+            cur = BABYLON.MeshBuilder.CreateBox("cursor", {}, scene);
+            cur.scaling    = vec3(0.01, 0.01, 0.01)
+            cur.parent     = camera
+            cur.position   = vec3(0, 0, 2);
+            cur.material   = curMat;
+            cur.isPickable = false
+            
+            // Create glow layer
+            var gl = new BABYLON.GlowLayer("", scene);
+            gl.customEmissiveColorSelector = (mesh, subMesh, material, result) => {
+                if(mesh.name == "laserLines"){
+                    result.set(0,0.5,1,1);
+                } else {
+                    result.set(0,0,0,0);
+                }
             }
         }
+        createScene();
+        
+        /*
+            ######################################################
+            ### Game speech
+        */
+        
+        // Choose english language
+        setUpSpeaking = (a_voices) => {
+            for(var i=0; i<a_voices.length; i++){
+                if(a_voices[i].lang == "en-US"){
+                    vojc = a_voices[i];
+                }
+            }
+        }
+    
+        // Say something if there is english voice
+        saySmth = (a_text, a_rate=1) => {
+            if(vojc){
+                let pre = new SpeechSynthesisUtterance(a_text);
+                    pre.pitch = 2;
+                    pre.rate = a_rate;
+                    pre.voice = vojc
+                window.speechSynthesis.speak(pre)
+            }
+        }
+        
+        // Create timer which will check if there are any voices
+        var timer = setInterval(function() {
+            var voices = speechSynthesis.getVoices();
+            if (voices.length !== 0) {
+                setUpSpeaking(voices)
+                clearInterval(timer);
+            }
+        }, 200);
             
         /*
             ######################################################
@@ -284,10 +308,8 @@
                 dynamo.hasAlpha = true;
                 dynamo.getContext().font = cFont;
                 dynamo.drawText(a_text, null, null, cFont, a_color ,"transparent", true, true);
-            let mat = mate("mat");
+            let mat = mate("mat", vec3(1, 1, 1), true);
                 mat.diffuseTexture  = dynamo;
-                mat.emissiveColor   = vec3(1, 1, 1)
-                mat.disableLighting = true;
             plane.material = mat;
         }
 
@@ -309,15 +331,15 @@
         */
 
         chooseSlot = (x) => {
-            slotC = x
+            slotC = x;
             for(var i=0; i<5; i++){
-                var m = scene.getMeshByName("slot"+i)
+                var m = scene.getMeshByName("slot"+i);
                 if(i==x){
                     m.material = selSlot;
                     m.visibility = 0.98;
                 } else {
                     m.visibility = (slots[i][0] != 0)?0.98:0.5;
-                    m.material   = eqSlot
+                    m.material   = eqSlot;
                 }
             }
         }
@@ -353,6 +375,17 @@
             }
         }
         
+        disap = (a_mesh, a_scale={x:1,y:1,z:1}) => {
+            if(a_mesh.scaling.x > 0){
+                a_mesh.scaling.x -= 0.05*a_scale.x
+                a_mesh.scaling.y -= 0.05*a_scale.y
+                a_mesh.scaling.z -= 0.05*a_scale.z
+                setTimeout(()=>{disap(a_mesh,a_scale)},10)
+            } else {
+                a_mesh.dispose();
+            }
+        }
+        
         /*
             ######################################################
             ### Placing/Deleting/Rotating objects
@@ -383,7 +416,7 @@
                         x.rotation = vec3(0,0,Math.PI*0.25)
                         x.material = reflMat;
                         x.isPickable = false
-                        cubeGrid[a_slot] = {"type":"reflector","how":0,"destructable":true}
+                        cubeGrid[a_slot] = {"type": "reflector", "how": 0, "destructable": true}
                         break;
                 }
                 slots[slotC][1]--;
@@ -398,7 +431,7 @@
             for(var i=0; i<5; i++){
                 if(slots[i][0] == a_type){
                     slots[i][1]++;
-                    changeText("slotS"+i,slots[i][1],7,C[1],32);
+                    changeText("slotS"+i, slots[i][1], 7, C[1], 32);
                     break
                 }
             }
@@ -410,13 +443,13 @@
                     case "reflector":
                         var a = scene.getMeshByName("reflector"+a_slot);
                         if(a){
-                            a.dispose()
-                            cubeGrid[a_slot] = {"type":"none"}
+                            disap(a,copyObj(a.scaling))//.dispose()
+                            cubeGrid[a_slot] = {"type": "none"}
                             addItem(10)
                         }
                         break;
                 }
-                startLaser()
+                startLaser();
             }
         }
        
@@ -530,7 +563,7 @@
                     path.push(pos.slice());
                 }
                 for(var j=0;j<path.length;j++){
-                    path[j] = {'x':path[j][0],'y':path[j][1],'z':path[j][2]};
+                    path[j] = {'x':path[j][0],'y':path[j][1],'z':path[j][2]-0.7};
                 }
                 var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: path, useVertexAlpha: false}, scene);
                 zz.isPickable = false
@@ -643,13 +676,15 @@
                     names.push(m.name)
                 } else if(/reflector[0-9]+/.test(m.name)){
                     names.push(m.name)
-                } else if(m.name == "laserLines"){
-                    names.push(m.name)
-                }
+                } 
             });
             names.forEach(m=>{
-                scene.getMeshByName(m).dispose()
+                disap(scene.getMeshByName(m), copyObj(scene.getMeshByName(m).scaling)) //.dispose()
             })
+            let z = scene.getMeshByName("laserLines");
+            if(z){
+                z.dispose()
+            }
         }
         
         processLevel = () => {
@@ -751,7 +786,7 @@
                     goBack(m, -100)
                 }
             });
-            a_label.dispose();
+            //a_label.dispose();
             var mati2 = mate("gridMat");
                 mati2.emissiveColor   = tex(0.07, 0.07, 0.12); //tex(0.05, 0.16, 0.30)
                 mati2.disableLighting = true;
@@ -789,11 +824,11 @@
             scene.meshes.forEach(function(m){
                 if(m.name == "logo" && Math.random() <= 0.005){
                     m.material = logoMaterials[ranRng(5)]
-                } else if(m.name == "data"){
-                    m.position.x += (Math.random()-0.5)*0.025
                 } else if(m.name == "grid"){
                     m.material = nonGrid;
-                }
+                } //else if(m.name == "data"){
+                //    m.position.x += (Math.random()-0.5)*0.025
+                //}
             });
             
             // Board grid selected update
@@ -867,7 +902,8 @@
             if(pi.pickedMesh){
                 var nme = pi.pickedMesh.name;
                 if(nme == "logoClick"){
-                    startGame(pi.pickedMesh);
+                    disap(pi.pickedMesh);
+                    setTimeout(()=>{startGame(pi.pickedMesh);},200);
                 } else if(/slot[ST]?0/.test(nme)){
                     chooseSlot(0);
                 } else if(/slot[ST]?1/.test(nme)){
