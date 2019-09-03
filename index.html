@@ -349,9 +349,24 @@
         
         /*
             ######################################################
-            ### Placing/Deleting objects
+            ### Placing/Deleting/Rotating objects
         */
        
+        rotateSmth = (a_slot) => {
+            switch(cubeGrid[a_slot]["type"]){
+                case "reflector":
+                    if(cubeGrid[a_slot]["how"]==0){
+                        scene.getMeshByName("reflector"+a_slot).rotation.z = Math.PI*0.75;
+                        cubeGrid[a_slot]["how"]=1;
+                    } else {
+                        scene.getMeshByName("reflector"+a_slot).rotation.z = Math.PI*0.25;
+                        cubeGrid[a_slot]["how"]=0;
+                    }
+                    break;
+            }
+            startLaser();
+        }
+        
         placeSmth = (a_slot) => {
             if(slots[slotC][0] != 0 && slots[slotC][1] > 0 && cubeGrid[a_slot]["type"] == "none"){
                 switch(slots[slotC][0]){
@@ -367,7 +382,9 @@
                 }
                 slots[slotC][1]--;
                 changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
-                startLaser()
+                startLaser();
+            } else if(cubeGrid[a_slot]["type"] != "none" && cubeGrid[a_slot]["destructable"]){
+                rotateSmth(a_slot);
             }
         }
         
@@ -423,7 +440,7 @@
                             } else {
                                 slote += GRIDSIZE;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 3;
+                                    dir = 3-2*cubeGrid[slote]["how"];
                                 }
                                 pos[1] += GRIDWID;
                             }
@@ -435,7 +452,7 @@
                             } else {
                                 slote -= 1;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 2;
+                                    dir = 2-2*cubeGrid[slote]["how"];
                                 }
                                 pos[0] -= GRIDWID;
                             }
@@ -447,7 +464,7 @@
                             } else {
                                 slote -= GRIDSIZE;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 1;
+                                    dir = 1+2*cubeGrid[slote]["how"];
                                 }
                                 pos[1] -= GRIDWID;
                             }
@@ -459,7 +476,7 @@
                             } else {
                                 slote += 1;
                                 if(cubeGrid[slote]["type"] == "reflector"){
-                                    dir = 0;
+                                    dir = 0+2*cubeGrid[slote]["how"];
                                 }
                                 pos[0] += GRIDWID;
                             }
