@@ -455,23 +455,46 @@
        
         /*
             ######################################################
-            ### Process level
+            ### Lasers
         */
         
+        createNewLaser = (a_slot, a_dir, fromEntry=false) => {
+            lasers.push({"slot": a_slot, "dir": a_dir, "fromEntry": fromEntry, "path": []});
+        }
+        
         startLaser = () => {
-            dmgBuff = 0;
+            // Reset dmg dealt to memory and exits that are ok
+            dmgBuff  = 0;
             exits[0] = 0;
-            let a = scene.getMeshByName("laserLines")
-            if(a){
-                a.dispose()
+            
+            // Clear all laser meshes
+            for(var i=scene.meshes.length-1; i>=0; i--){
+                if(/laserLines/.test(scene.meshes[i].name)){
+                    scene.meshes[i].dispose();
+                }
             }
+            
+            // Clear all lasers created while ingame and clear all paths
+            for(var i=lasers.length-1; i>=0; i--){
+                if(!lasers[i]["fromEntry"]){
+                    lasers.splice(i, 1);
+                    continue;
+                }
+                lasers[i]["path"] = [];
+            }
+            
+            // Create path highlight | It is used to detect laser collisions
+            high = [0,0];
+            
+            var path = Array(lasers.length).fill([]);
+            // Create paths for all lasers
             for(var i=0; i<lasers.length; i++){
-                var path = []
                 var slote = lasers[i]["slot"];
-                var pos = gridPos[lasers[i]["slot"]].slice();
-                var dir = lasers[i]["dir"]
-                path.push(pos.slice());
-                isFine = 100
+                var pos = gridPos[slote].slice();
+                var dir = lasers[i]["dir"];
+                path[i].push(pos.slice());
+                lasers[i]["path"].push(slote);
+                isFine = 100;
                 while(isFine){
                     switch(dir){
                         case 0:
@@ -559,15 +582,42 @@
                             }
                             break;
                     }
-                    if(isFine){ isFine--; }
-                    path.push(pos.slice());
+                    if(isFine){ isFine--; lasers[i]["path"].push(slote); } else {
+                        lasers[i]["path"].push("outside");
+                    }
+                    path[i].push(pos.slice());
                 }
-                for(var j=0;j<path.length;j++){
-                    path[j] = {'x':path[j][0],'y':path[j][1],'z':path[j][2]-0.7};
-                }
-                var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: path, useVertexAlpha: false}, scene);
-                zz.isPickable = false
             }
+            
+            var corrPath = Array(lasers.length).fill([]);
+            var pathS = Array(lasers.length).fill(0);
+            for(var i=0; i<100; i++){
+                for(var j=0; j<lasers.length; j++){
+                    if(!pathS[j]){
+                        let o = lasers[j]["path"][i];
+                        var t = 0;
+                        if(o !== undefined && o != "outside" && cubeGrid[o]["type"] != "none"){
+                            t = 1;
+                        } else if(o !== undefined && ~high[Math.floor(o/32)]&(2**(o%32))){
+                            high[Math.floor(o/32)] ^= 2**(o%32);
+                            t = 1;
+                        } else if(o !== undefined && lasers[j]["path"][i] == "outside"){
+                            t = 1;
+                        } else if(o !== undefined && high[Math.floor(o/32)]&(2**(o%32))){
+                            t = 1;
+                            pathS[j] = 1;
+                        }
+                        if(t){
+                            corrPath[j].push({'x': path[j][i][0], 'y': path[j][i][1], 'z': path[j][i][2]-0.7});
+                        }
+                    }
+                }
+            }
+            for(var j=0; j<lasers.length; j++){
+                var zz = BABYLON.MeshBuilder.CreateLines("laserLines", {points: corrPath[j], useVertexAlpha: false}, scene);
+                    zz.isPickable = false
+            }
+            
             if(exits[0]==exits[1] && exits[1] != 0){
                 if(++level!=LEVELS.length){
                     processLevel();
@@ -578,6 +628,11 @@
             }
         }
         
+        /*
+            ######################################################
+            ### Process level
+        */
+        
         createEntr = (a_slot, a_fau) => {
             var y = BABYLON.MeshBuilder.CreateBox("gridEntryFaucet"+a_slot, {}, scene);
                 y.scaling  = vec3(0.4, 0.4, 1.5);
@@ -586,23 +641,23 @@
             switch(a_fau){
                 case 0:
                     y.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1]+1,gridPos[a_slot][2]);
-                    cubeGrid[a_slot] = {"type":"entry","where":0,"destructable":false}
-                    lasers.push({"slot":a_slot,"dir":0})
+                    cubeGrid[a_slot] = {"type":"entry","where":0,"destructable":false};
+                    createNewLaser(a_slot, 0, true);
                     break;
                 case 1:
                     y.position = vec3(gridPos[a_slot][0]-1,gridPos[a_slot][1],gridPos[a_slot][2]);
-                    cubeGrid[a_slot] = {"type":"entry","where":1,"destructable":false}
-                    lasers.push({"slot":a_slot,"dir":1})
+                    cubeGrid[a_slot] = {"type":"entry","where":1,"destructable":false};
+                    createNewLaser(a_slot, 1, true);
                     break;
                 case 2:
                     y.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1]-1,gridPos[a_slot][2]);
-                    cubeGrid[a_slot] = {"type":"entry","where":2,"destructable":false}
-                    lasers.push({"slot":a_slot,"dir":2})
+                    cubeGrid[a_slot] = {"type":"entry","where":2,"destructable":false};
+                    createNewLaser(a_slot, 2, true);
                     break;
                 case 3:
                     y.position = vec3(gridPos[a_slot][0]+1,gridPos[a_slot][1],gridPos[a_slot][2]);
-                    cubeGrid[a_slot] = {"type":"entry","where":3,"destructable":false}
-                    lasers.push({"slot":a_slot,"dir":3})
+                    cubeGrid[a_slot] = {"type":"entry","where":3,"destructable":false};
+                    createNewLaser(a_slot, 3, true);
                     break;
             }
             var x = BABYLON.MeshBuilder.CreateBox("gridEntry"+a_slot, {}, scene);
@@ -689,7 +744,7 @@
         
         processLevel = () => {
             resetLevel();
-            var data = LEVELS[level][0];
+            var data = LEVELS[level][0].slice();
             var slotk = 0;
             var blk = 0;
             for(var i=0; i<data.length; i++){
@@ -903,7 +958,7 @@
                 var nme = pi.pickedMesh.name;
                 if(nme == "logoClick"){
                     disap(pi.pickedMesh);
-                    setTimeout(()=>{startGame(pi.pickedMesh);},200);
+                    setTimeout(()=>{startGame(pi.pickedMesh);},300);
                 } else if(/slot[ST]?0/.test(nme)){
                     chooseSlot(0);
                 } else if(/slot[ST]?1/.test(nme)){
@@ -946,12 +1001,6 @@
             mouseDown=0;
         });
         
-        /*
-            FOR LATER USE
-            
-            scene.getAnimationRatio()
-        */
-       
         /*
             ### Special thanks to:
             @Jorengarenar (https://github.com/Jorengarenar)
