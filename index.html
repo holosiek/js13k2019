@@ -23,7 +23,8 @@
             7  - exit bottom
             8  - exit left
             9  - wall
-            10 - reflector
+            10 - reflector \
+            11 - reflector /
         */
         /*
             ######################################################
@@ -43,6 +44,12 @@
             ### Variables
         */
        
+        // Consts
+        FONT     = "Consolas";
+        GRIDSIZE = 8;
+        GRIDWID  = 30/GRIDSIZE;
+        DELTIME  = 30;
+       
         // Logo compressed
         logo = [15395444,11438676,13274198,11176533,15657558];
         
@@ -58,7 +65,7 @@
         // Materials
         logoMaterials = [];
         dataMaterials = [];
-        var eqSlot, selGrid, nonGrid, curMat, wallMat, entrMat, reflMat, selSlot, gridBackMat;
+        var eqSlot, selGrid, selPGrid, nonGrid, curMat, wallMat, entrMat, reflMat, selSlot, gridBackMat;
         
         // Game vars
         shakeCamera = 0;   // Camera shake level (0-3)
@@ -75,17 +82,13 @@
         gridPos = [];  // Position of all grid slots
         lasers = [];   // All created lasers
         
-        delet = 40;           // Time to delete object
+        delet = DELTIME;      // Time to delete object
         mouseDown = 0;        // Is mouse down on canvas
         gridC = -1;           // Choosen grid slot
         wantToPlace = false;  // Do we want to place smth on the grid
         
         var vojc;      // English voice
         
-        // Consts
-        FONT     = "Consolas";
-        GRIDSIZE = 8;
-        GRIDWID  = 30/GRIDSIZE;
         /*
             Text:
             0 - logoLabel
@@ -111,7 +114,7 @@
         LEVELS = [
         [[512,4194304],[5,2],[10,1]],
         [[201326592,28],[9,7,1,9,9],[10,4]],
-        [[1,0],[1],[10,1000]]
+        [[463496319,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]]
         ]
         
         // Game grid
@@ -175,8 +178,11 @@
             // selected slot material
             selSlot = mate("selSlot", tex(0.1, 0.1, 0.15), true);
             
+            // selected placable grid
+            selPGrid = mate("selPGrid", tex(0.035, 0.12, 0.22), true);
+            
             // selected grid
-            selGrid = mate("selGrid", tex(0.035, 0.12, 0.22), true);
+            selGrid = mate("selGrid", tex(0.017, 0.06, 0.11), true);
             
             // non-selected grid
             nonGrid = mate("nonGrid", tex(0.02, 0.02, 0.05), true);
@@ -236,20 +242,29 @@
             materialCreation()
             
             // Create background data blocks
-            for(var i=0; i<200; i++){
-                pl = BABYLON.MeshBuilder.CreatePlane("data", {sideOrientation: 1}, scene)
-                pl.position  = vec3(Math.random()*100-50, Math.random()*30-13, -60-Math.random()*5);
+            var pl = BABYLON.MeshBuilder.CreatePlane("data", {sideOrientation: 1}, scene);
                 pl.material  = dataMaterials[ranRng(5)];
                 pl.scaling.x = 3
+                pl.isPickable = false
+                pl.isVisible = false
+            for(var i=0; i<200; i++){
+                var z = pl.createInstance("data")
+                    z.position  = vec3(Math.random()*100-50, Math.random()*30-13, -60-Math.random()*5);
             }
             
             // Create cursor pointer
-            cur = BABYLON.MeshBuilder.CreateBox("cursor", {}, scene);
-            cur.scaling    = vec3(0.01, 0.01, 0.01)
-            cur.parent     = camera
-            cur.position   = vec3(0, 0, 2);
-            cur.material   = curMat;
-            cur.isPickable = false
+            var cur = BABYLON.MeshBuilder.CreateBox("cursor", {}, scene);
+                cur.scaling    = vec3(0.01, 0.01, 0.01)
+                cur.parent     = camera
+                cur.position   = vec3(0, 0, 2);
+                cur.material   = curMat;
+                cur.isPickable = false
+                
+            // Create subtitles
+            drawText("subs", "", "#ffffff", 40, vec3(0, -7, 18), 0, 20);
+            var l = scene.getMeshByName("subs");
+                l.parent     = camera
+                l.isPickable = false
             
             // Create glow layer
             var gl = new BABYLON.GlowLayer("", scene);
@@ -281,18 +296,20 @@
         saySmth = (a_text, a_rate=1) => {
             if(vojc){
                 let pre = new SpeechSynthesisUtterance(a_text);
-                    pre.pitch = 2;
-                    pre.rate = a_rate;
-                    pre.voice = vojc
-                window.speechSynthesis.speak(pre)
+                    pre.pitch   = 2;
+                    pre.rate    = a_rate;
+                    pre.voice   = vojc
+                    pre.onstart = ()=>{changeText("subs",a_text,40,"#ffffff",20);}
+                    pre.onend   = ()=>{changeText("subs","",40,"#ffffff",20);}
+                window.speechSynthesis.speak(pre);
             }
         }
         
         // Create timer which will check if there are any voices
         var timer = setInterval(function() {
             var voices = speechSynthesis.getVoices();
-            if (voices.length !== 0) {
-                setUpSpeaking(voices)
+            if(voices.length !== 0){
+                setUpSpeaking(voices);
                 clearInterval(timer);
             }
         }, 200);
@@ -595,9 +612,9 @@
             
             if(exits[0]==exits[1] && exits[1] != 0){
                 if(++level!=LEVELS.length){
-                    processLevel();
+                    setTimeout(processLevel, 250);
                 } else {
-                    resetLevel()
+                    setTimeout(resetLevel, 250);
                     console.log("!")
                 }
             }
@@ -673,6 +690,16 @@
                 x.isPickable = false
         }
         
+        createReflec = (a_slot, a_fau) => {
+            var x = BABYLON.MeshBuilder.CreateBox("reflector"+a_slot, {}, scene);
+                x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]-1);
+                x.scaling  = vec3(GRIDWID-0.5, 0.1, 0.5);
+                x.rotation = vec3(0,0,Math.PI*(0.25+a_fau*0.5))
+                x.material = reflMat;
+                x.isPickable = false;
+            cubeGrid[a_slot] = {"type": "reflector", "how": a_fau, "destructable": false}
+        }
+        
         createWall = (a_slot) => {
             var x = BABYLON.MeshBuilder.CreateBox("gridWall"+a_slot, {}, scene);
                 x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]);
@@ -741,12 +768,16 @@
                             case 9:
                                 createWall(slotk);
                                 break;
+                            case 10:
+                            case 11:
+                                createReflec(slotk, LEVELS[level][1][blk]-10);
+                                break;
                             default:
                                 x = BABYLON.MeshBuilder.CreateBox("gridPoz", {}, scene);
                                 x.position = vec3(gridPos[slotk][0],gridPos[slotk][1],gridPos[slotk][2]);
                                 x.scaling  = vec3(GRIDWID-0.25, GRIDWID-0.25, 0.25);
                                 x.material = logoMaterials[ranRng(5)];
-                                x.isPickable = false
+                                x.isPickable = false;
                                 break;
                         }
                         blk++;
@@ -881,18 +912,34 @@
                     m.material = logoMaterials[ranRng(5)]
                 } else if(m.name == "grid"){
                     m.material = nonGrid;
-                } //else if(m.name == "data"){
-                //    m.position.x += (Math.random()-0.5)*0.025
-                //}
+                }
             });
             
             // Board grid selected update
-            //var pi = scene.pick(scene.pointerX, scene.pointerY);
             var pi = scene.pick(can.width/2, can.height/2);
             if(pi.pickedMesh){
-                if(pi.pickedMesh.name == "grid"){
-                    pi.pickedMesh.material = selGrid;
+                var nme = pi.pickedMesh.name;
+                if(nme.split("Z")[0] == "grid"){
+                    scene.meshes.forEach(m=>{
+                        if(/gridZ[0-9]+/.test(m.name)){
+                            m.material = nonGrid;
+                    }})
+                    var u = Number(nme.split("Z")[1]);
+                    if(cubeGrid[u]["destructable"] == true){
+                        pi.pickedMesh.material = selPGrid;
+                    } else {
+                        pi.pickedMesh.material = selGrid;
+                    }
                 }
+            }
+            
+            // Deal damage to memory
+            if(dmgBuff){
+                shakeCamera = (dmgBuff>3)?3:dmgBuff;
+                actS+=dmgBuff;
+                changeText("storage",actS+"/"+maxS+" B",10,"#ffffff")
+            } else {
+                shakeCamera = 0;
             }
             
             // Shake camera
@@ -916,22 +963,13 @@
                     } else {
                         deleteSmth(gridC)
                         wantToPlace = false;
-                        delet = 30;
+                        delet = DELTIME;
                     }
                 } else {
                     placeSmth(gridC)
                     wantToPlace = false;
-                    delet = 30;
+                    delet = DELTIME;
                 }
-            }
-            
-            // Deal damage to memory
-            if(dmgBuff){
-                shakeCamera = (dmgBuff>3)?3:dmgBuff;
-                actS+=dmgBuff;
-                changeText("storage",actS+"/"+maxS+" B",10,"#ffffff")
-            } else {
-                shakeCamera = 0;
             }
             
             // Render scene
