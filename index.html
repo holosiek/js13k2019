@@ -25,6 +25,8 @@
             9  - wall
             10 - reflector \
             11 - reflector /
+            12 - mirror -
+            13 - mirror |
         */
         /*
             ######################################################
@@ -49,6 +51,7 @@
         GRIDSIZE = 8;
         GRIDWID  = 30/GRIDSIZE;
         DELTIME  = 30;
+        DATABLKS = 200;
        
         // Logo compressed
         logo = [15395444,11438676,13274198,11176533,15657558];
@@ -57,6 +60,11 @@
         camOff = new BABYLON.Vector3(0, 0, 1);
         
         // Game state
+        /*
+            0 - Game not started yet
+            1 - Logo is created
+            2 - Game has started
+        */
         gameState = 0;
         
         // Highlight layer
@@ -65,7 +73,8 @@
         // Materials
         logoMaterials = [];
         dataMaterials = [];
-        var eqSlot, selGrid, selPGrid, nonGrid, curMat, wallMat, entrMat, reflMat, selSlot, gridBackMat;
+        var eqSlot, selGrid, selPGrid, nonGrid, curMat, wallMat, 
+            entrMat, reflMat, selSlot, gridBackMat, heroMat;
         
         // Game vars
         shakeCamera = 0;   // Camera shake level (0-3)
@@ -87,34 +96,55 @@
         gridC = -1;           // Choosen grid slot
         wantToPlace = false;  // Do we want to place smth on the grid
         
-        var vojc;      // English voice
+        var vojc,                // English voice
+            hero,                // Body
+            heroEyes,            // Eyes
+            isHero = 0,          // Is hero created
+            heroMov = 0,         // Calculate hero movement
+            heroIsSpeaking = 1;  // Movement speed ratio
         
-        /*
-            Text:
-            0 - logoLabel
-            1 - memoryLabel
-            2 - toolbarLabel
-            3 - reflector
-        */
+        var optVoice = 1,        // If true, speechSynthesis API is in use
+            optQuality = 2,      // 0 - low, 1 - medium, 2 - high    
+            optSensitiv = 300;   // Mouse sensitivity; Default: 300
+            
+        // Array containg strings
         S = [
             "Click here to start playing", 
             "Memory size", 
             "Toolbar",
             "Reflector",
-            "Game created by @holosiek & @bthefw"
+            "Game created by @holosiek & @bthefw",
+            "Mirror",
+            "<- Options",
+            "Achievements ->",
+            "Game ->",
+            "<- Achievements",
+            
+            "Camera shake: ",               // 10
+            "Animated logo: ",              // 11
+            "Hero animations: ",            // 12
+            "Objects animations: ",         // 13
+            "Data blocks on the back: ",    // 14
+            
+            "Low",      // 15
+            "Medium",   // 16
+            "High",     // 17
+            
+            "Enabled",  // 18
+            "Disabled", // 19
+            
+            "speechSynthesis API"  // 20
         ];
         
-        /*
-            Colors:
-            0 - text
-            1 - labels
-        */
-        C = ["#cacae7","#8e8ecc"];
+        // Array containg colors
+        C = ["#cacae7","#8e8ecc","#693e73","#555555","#777777","#FFFFFF"];
         
         LEVELS = [
+        [[1,1],[5,1],[10,1000,12,1000]],
         [[512,4194304],[5,2],[10,1]],
-        [[201326592,28],[9,7,1,9,9],[10,4]],
-        [[463496319,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]]
+        [[201326592,536903708],[9,7,1,9,9,9,9],[10,4]],
+        [[463496319,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]],
+        [[2172747992,2122416513],[9,9,9,9,2,4,9,9,2,4,9,9,2,4,9,7,7,7,7,7,7],[10,6]]
         ]
         
         // Game grid
@@ -124,15 +154,13 @@
             ######################################################
             ### Misc functions
         */
-       
-        ranRng = num => {
-            return Math.floor(Math.random()*num);
-        }
-        
+               
+        // Return Babylon.js color
         tex = (r, g, b) => {
             return new BABYLON.Color3(r, g, b);
         }
         
+        // Return Babylon.js standard material
         mate = (a_id, a_color, a_disLight=false) => {
             let a = new BABYLON.StandardMaterial(a_id, scene);
                 a.emissiveColor = a_color;
@@ -140,16 +168,24 @@
             return a;
         }
         
+        // Return Babylon.js vector
         vec3 = (x, y, z) => {
             return new BABYLON.Vector3(x, y, z);
         }
         
+        // Return random number from -1 to 1
         randS = () => {
             let r = Math.random();
             return (Math.random()<=0.5)?r:-r;
         }
         
-        copyObj = (a_obj) => {
+        // Random int from 0 to num-1
+        ranRng = num => {
+            return Math.floor(Math.random()*num);
+        }
+        
+        // Return copy of the object
+        copyObj = a_obj => {
             return JSON.parse(JSON.stringify(a_obj));
         }
         
@@ -158,6 +194,7 @@
             ### Material creation
         */
        
+        // Create all materials
         materialCreation = () => {
             // Create colorful materials
             for(var i=0; i<5; i++){
@@ -189,7 +226,7 @@
             nonGrid.alpha = 0.7;
             
             // wall material
-            wallMat = mate("wallMat", tex(0.6, 0.6, 0.6), true);
+            wallMat = mate("wallMat", tex(0.6, 0.6, 0.6));
             
             // reflector material
             reflMat = mate("reflMat", tex(0.8, 0.8, 0.8));
@@ -202,6 +239,9 @@
             
             // Back of grid material
             gridBackMat = mate("gridMat", tex(0.07, 0.07, 0.12), true);
+            
+            // Hero material
+            heroMat = mate("heroMat", tex(0.862, 0.654, 0.909));
         }
         
         /*
@@ -209,6 +249,37 @@
             ### Scene creation
         */
        
+        // Clear all data blocks
+        removeDataBlocks = () => {
+            var names = [];
+            scene.meshes.forEach(m=>{
+                if(/data[0-9]+/.test(m.name)){
+                    names.push(m);
+                }
+            });
+            names.forEach(m=>{
+                m.dispose();
+            });
+        }
+        
+        // Create data blocks
+        createDataBlocks = () => {
+            var pl = BABYLON.MeshBuilder.CreatePlane("data", {sideOrientation: 1}, scene);
+                pl.material   = dataMaterials[ranRng(5)];
+                pl.scaling.x  = 3;
+                pl.isPickable = false;
+                pl.isVisible  = false;
+            for(var i=0; i<DATABLKS; i++){
+                var z = pl.createInstance("data"+i)
+                if(gameState > 1){
+                    z.position = vec3((Math.random()*100-50)*1.4, (Math.random()*30-13)*1.4, -100);
+                } else {
+                    z.position = vec3(Math.random()*100-50, Math.random()*30-13, -60-Math.random()*5);
+                }
+            }
+        }
+        
+        // Create whole scene
         createScene = () => {
             // Create new scene and add needed options
             scene = new BABYLON.Scene(engine);
@@ -231,40 +302,33 @@
             
             // Create camera
             camera = new BABYLON.FreeCamera("camera", camOff, scene);
-            camera.inertia = 0
-            camera.angularSensibility = 300
+            camera.inertia = 0;
+            camera.angularSensibility = optSensitiv;
             
             // Target camera at 0,0,0
-            camera.setTarget(BABYLON.Vector3.Zero());
+            camera.setTarget(vec3(0,0,0));
             camera.attachControl(can, true);
             camera.inputs.remove(camera.inputs.attached.keyboard);
             
-            materialCreation()
+            // Create materials
+            materialCreation();
             
             // Create background data blocks
-            var pl = BABYLON.MeshBuilder.CreatePlane("data", {sideOrientation: 1}, scene);
-                pl.material  = dataMaterials[ranRng(5)];
-                pl.scaling.x = 3
-                pl.isPickable = false
-                pl.isVisible = false
-            for(var i=0; i<200; i++){
-                var z = pl.createInstance("data")
-                    z.position  = vec3(Math.random()*100-50, Math.random()*30-13, -60-Math.random()*5);
-            }
+            createDataBlocks();
             
             // Create cursor pointer
             var cur = BABYLON.MeshBuilder.CreateBox("cursor", {}, scene);
-                cur.scaling    = vec3(0.01, 0.01, 0.01)
-                cur.parent     = camera
+                cur.scaling    = vec3(0.01, 0.01, 0.01);
+                cur.parent     = camera;
                 cur.position   = vec3(0, 0, 2);
                 cur.material   = curMat;
                 cur.isPickable = false
                 
             // Create subtitles
-            drawText("subs", "", "#ffffff", 40, vec3(0, -7, 18), 0, 20);
+            drawText("subs", "", C[5], 40, vec3(0, -7, 18), 0, 20);
             var l = scene.getMeshByName("subs");
-                l.parent     = camera
-                l.isPickable = false
+                l.parent     = camera;
+                l.isPickable = false;
             
             // Create glow layer
             var gl = new BABYLON.GlowLayer("", scene);
@@ -276,20 +340,26 @@
                 }
             }
         }
-        
-        
+     
         /*
             ######################################################
             ### Game speech
         */
         
         // Choose english language
-        setUpSpeaking = (a_voices) => {
+        setUpSpeaking = a_voices => {
             for(var i=0; i<a_voices.length; i++){
                 if(a_voices[i].lang == "en-US"){
                     vojc = a_voices[i];
+                    changeText("voiceLabel1", S[20], 7, C[1], 20);
+                    changeText("voiceLabel2", S[18], 7, C[2], 16);
+                    optVoice = 1;
+                    return;
                 }
             }
+            changeText("voiceLabel1", S[20], 7, C[3], 20);
+            changeText("voiceLabel2", "Not supported / no english voice", 7, C[3], 16);
+            optVoice = -1;
         }
     
         // Say something if there is english voice
@@ -298,17 +368,17 @@
                 let pre = new SpeechSynthesisUtterance(a_text);
                     pre.pitch   = 2;
                     pre.rate    = a_rate;
-                    pre.voice   = vojc
-                    pre.onstart = ()=>{changeText("subs",a_text,40,"#ffffff",20);}
-                    pre.onend   = ()=>{changeText("subs","",40,"#ffffff",20);}
+                    pre.voice   = vojc;
+                    pre.onstart = ()=>{changeText("subs",a_text,40,C[5],20);heroIsSpeaking=20};
+                    pre.onend   = ()=>{changeText("subs","",40,C[5],20);heroIsSpeaking=1};
                 window.speechSynthesis.speak(pre);
             }
         }
         
         // Create timer which will check if there are any voices
-        var timer = setInterval(function() {
+        var timer = setInterval(()=>{
             var voices = speechSynthesis.getVoices();
-            if(voices.length !== 0){
+            if(voices.length){
                 setUpSpeaking(voices);
                 clearInterval(timer);
             }
@@ -316,17 +386,60 @@
             
         /*
             ######################################################
+            ### Hero functions
+        */
+        
+        // Change her eyes
+        changeEyes = (a_left, a_right) => {
+            changeText("heroEyes", a_left + "  " + a_right, 8, C[2], 100, 2);
+        }
+        
+        // Create whole character: body, eyes
+        createHero = () => {
+            // Create body
+            hero = BABYLON.MeshBuilder.CreateBox("hero", {}, scene);
+            hero.position   = vec3(-33, 3, -50);
+            hero.scaling    = vec3(8, 8, 8);
+            hero.rotation   = vec3(0, Math.PI*0.25, 0);
+            hero.material   = heroMat;
+            hero.isPickable = false;
+            
+            // Create eyes
+            drawText("heroEyes","^  -", C[2], 8, vec3(-23, 3.5, -35.75), Math.PI*1.25, 100, 2);
+            heroEyes = scene.getMeshByName("heroEyes");
+            
+            // Change var so code knows that hero is created
+            isHero = 1;
+        }
+        
+        // Speak dialog
+        speakHero = a_which => {
+            switch(a_which){
+                case 0:
+                    saySmth("Well. Look who we get here!", 1.1);
+                    saySmth("I thought you will never decide to cooperate.", 1.1);
+                    saySmth("But here you are, so let's get down to business.", 1.1);
+                    saySmth("I need you to do a backup.", 0.9);
+                    saySmth("And you know - it's extremly important.", 0.9);
+                    saySmth("I might not forgive you if you fail.", 0.9);
+                    break;
+            }
+        }
+        
+        /*
+            ######################################################
             ### Text drawing functions
         */
        
-        // Create/Update text
-        drawText = (a_id, a_text, a_color, a_width, a_pos, a_rot, a_fontSize=60) => {
-            var plane = BABYLON.MeshBuilder.CreatePlane(a_id, {width: a_width, height: 1, sideOrientation: 2}, scene);
+        // Create text
+        drawText = (a_id, a_text, a_color, a_width, a_pos, a_rot, a_fontSize=60, a_height=1) => {
+            var plane = BABYLON.MeshBuilder.CreatePlane(a_id, {width: a_width, height: a_height, sideOrientation: 2}, scene);
                 plane.position   = a_pos;
                 plane.rotation.y = a_rot;
             var wid = a_width*60;
             var cFont = a_fontSize + "px " + FONT;
-            var dynamo = new BABYLON.DynamicTexture("dynText", {width:wid, height: 60}, scene);
+            var hei = a_height*60;
+            var dynamo = new BABYLON.DynamicTexture("dynText", {width:wid, height: hei}, scene);
                 dynamo.hasAlpha = true;
                 dynamo.getContext().font = cFont;
                 dynamo.drawText(a_text, null, null, cFont, a_color ,"transparent", true, true);
@@ -335,13 +448,14 @@
             plane.material = mat;
         }
 
-        changeText = (a_mesh, a_text, a_wid, a_color, a_fontSize=60) => {
+        // Update text
+        changeText = (a_mesh, a_text, a_wid, a_color, a_fontSize=60, a_height=1) => {
             var t_mesh = scene.getMeshByName(a_mesh);
             if(t_mesh != null){
                 let cFont = a_fontSize + "px " + FONT;
                 let dynamo = t_mesh.material.diffuseTexture
                 let ctx = dynamo.getContext();
-                    ctx.clearRect(0, 0, a_wid*60, 60)
+                    ctx.clearRect(0, 0, a_wid*60, a_height*60)
                     ctx.font = cFont;
                 dynamo.drawText(a_text, null, null, cFont, a_color, "transparent", true, true);
             }
@@ -352,6 +466,28 @@
             ### Handle slots
         */
 
+        drawOnSlot = (a_slot, a_what) => {
+            var drawName = "slotI"+a_slot
+            switch(a_what){
+                case 10:
+                    var x = BABYLON.MeshBuilder.CreateBox(drawName, {}, scene);
+                        x.position = vec3(24, 6-a_slot*3.25, -30);
+                        x.scaling  = vec3(2.5, 0.1, 0.5);
+                        x.rotation = vec3(0, Math.PI*0.8, Math.PI*0.25)
+                        x.material = reflMat;
+                        x.isPickable = false;
+                    break;
+                case 12:
+                    var x = BABYLON.MeshBuilder.CreateBox(drawName, {}, scene);
+                        x.position = vec3(24, 6-a_slot*3.25, -30);
+                        x.scaling  = vec3(2.5, 0.1, 0.5);
+                        x.rotation = vec3(0, Math.PI*0.8, 0)
+                        x.material = reflMat;
+                        x.isPickable = false;
+                    break;
+            }
+        }
+        
         chooseSlot = (x) => {
             slotC = x;
             for(var i=0; i<5; i++){
@@ -370,6 +506,8 @@
             switch(x){
                 case 10:
                     return S[3];
+                case 12:
+                    return S[5];
                 default:
                     return "";
             }
@@ -398,11 +536,15 @@
         }
         
         disap = (a_mesh, a_scale={x:1,y:1,z:1}) => {
-            if(a_mesh.scaling.x > 0){
-                a_mesh.scaling.x -= 0.05*a_scale.x
-                a_mesh.scaling.y -= 0.05*a_scale.y
-                a_mesh.scaling.z -= 0.05*a_scale.z
-                setTimeout(()=>{disap(a_mesh,a_scale)},10)
+            if(optQuality > 0){
+                if(a_mesh.scaling.x > 0){
+                    a_mesh.scaling.x -= 0.05*a_scale.x
+                    a_mesh.scaling.y -= 0.05*a_scale.y
+                    a_mesh.scaling.z -= 0.05*a_scale.z
+                    setTimeout(()=>{disap(a_mesh,a_scale)},10)
+                } else {
+                    a_mesh.dispose();
+                }
             } else {
                 a_mesh.dispose();
             }
@@ -424,6 +566,15 @@
                         cubeGrid[a_slot]["how"]=0;
                     }
                     break;
+                case "mirror":
+                    if(cubeGrid[a_slot]["how"]==0){
+                        scene.getMeshByName("mirror"+a_slot).rotation.z = Math.PI*0.5;
+                        cubeGrid[a_slot]["how"]=1;
+                    } else {
+                        scene.getMeshByName("mirror"+a_slot).rotation.z = 0;
+                        cubeGrid[a_slot]["how"]=0;
+                    }
+                    break;
             }
             startLaser();
         }
@@ -439,6 +590,15 @@
                         x.material = reflMat;
                         x.isPickable = false
                         cubeGrid[a_slot] = {"type": "reflector", "how": 0, "destructable": true}
+                        break;
+                    case 12:
+                        x = BABYLON.MeshBuilder.CreateBox("mirror"+a_slot, {}, scene);
+                        x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]-1);
+                        x.scaling  = vec3(GRIDWID-0.5, 0.1, 0.5);
+                        x.rotation = vec3(0,0,0)
+                        x.material = reflMat;
+                        x.isPickable = false
+                        cubeGrid[a_slot] = {"type": "mirror", "how": 0, "destructable": true}
                         break;
                 }
                 slots[slotC][1]--;
@@ -465,9 +625,17 @@
                     case "reflector":
                         var a = scene.getMeshByName("reflector"+a_slot);
                         if(a){
-                            disap(a,copyObj(a.scaling))//.dispose()
+                            disap(a,copyObj(a.scaling))
                             cubeGrid[a_slot] = {"type": "none"}
                             addItem(10)
+                        }
+                        break;
+                    case "mirror":
+                        var a = scene.getMeshByName("mirror"+a_slot);
+                        if(a){
+                            disap(a,copyObj(a.scaling))
+                            cubeGrid[a_slot] = {"type": "none"}
+                            addItem(12)
                         }
                         break;
                 }
@@ -525,6 +693,12 @@
                                 var z = cubeGrid[slote]["type"];
                                 if(z == "reflector"){
                                     dir = 3-2*cubeGrid[slote]["how"];
+                                } else if(z == "mirror"){
+                                    if(cubeGrid[slote]["how"] == 0){
+                                        dir = 2;
+                                    } else {
+                                        isFine = 0;
+                                    }
                                 } else if(z == "wall" || z == "entry"){
                                     isFine = 0;
                                 } else if(z == "exit"){
@@ -546,6 +720,12 @@
                                 var z = cubeGrid[slote]["type"];
                                 if(z == "reflector"){
                                     dir = 2-2*cubeGrid[slote]["how"];
+                                } else if(z == "mirror"){
+                                    if(cubeGrid[slote]["how"] == 1){
+                                        dir = 3;
+                                    } else {
+                                        isFine = 0;
+                                    }
                                 } else if(z == "wall" || z == "entry"){
                                     isFine = 0;
                                 } else if(z == "exit"){
@@ -567,6 +747,12 @@
                                 var z = cubeGrid[slote]["type"];
                                 if(z == "reflector"){
                                     dir = 1+2*cubeGrid[slote]["how"];
+                                } else if(z == "mirror"){
+                                    if(cubeGrid[slote]["how"] == 0){
+                                        dir = 0;
+                                    } else {
+                                        isFine = 0;
+                                    }
                                 } else if(z == "wall" || z == "entry"){
                                     isFine = 0;
                                 } else if(z == "exit"){
@@ -588,6 +774,12 @@
                                 var z = cubeGrid[slote]["type"];
                                 if(z == "reflector"){
                                     dir = 0+2*cubeGrid[slote]["how"];
+                                } else if(z == "mirror"){
+                                    if(cubeGrid[slote]["how"] == 1){
+                                        dir = 1;
+                                    } else {
+                                        isFine = 0;
+                                    }
                                 } else if(z == "wall" || z == "entry"){
                                     isFine = 0;
                                 } else if(z == "exit"){
@@ -613,6 +805,15 @@
             if(exits[0]==exits[1] && exits[1] != 0){
                 if(++level!=LEVELS.length){
                     setTimeout(processLevel, 250);
+                    let o = ranRng(3);
+                    if(o==0){
+                        saySmth("Good job!", 1.5)
+                    } else if(i==1){
+                        saySmth("Very nice", 0.8)
+                    } else if(i==2){
+                        saySmth("Outstanding!", 0.8)
+                    }
+                    
                 } else {
                     setTimeout(resetLevel, 250);
                     console.log("!")
@@ -700,10 +901,20 @@
             cubeGrid[a_slot] = {"type": "reflector", "how": a_fau, "destructable": false}
         }
         
+        createMirror = (a_slot, a_fau) => {
+            var x = BABYLON.MeshBuilder.CreateBox("mirror"+a_slot, {}, scene);
+                x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]-1);
+                x.scaling  = vec3(GRIDWID-0.5, 0.1, 0.5);
+                x.rotation = vec3(0,0,Math.PI*(a_fau*0.5))
+                x.material = reflMat;
+                x.isPickable = false;
+            cubeGrid[a_slot] = {"type": "mirror", "how": a_fau, "destructable": false}
+        }
+        
         createWall = (a_slot) => {
             var x = BABYLON.MeshBuilder.CreateBox("gridWall"+a_slot, {}, scene);
                 x.position = vec3(gridPos[a_slot][0],gridPos[a_slot][1],gridPos[a_slot][2]);
-                x.scaling  = vec3(GRIDWID-0.5, GRIDWID-0.5, 2);
+                x.scaling  = vec3(GRIDWID-0.5, GRIDWID-0.5, 2-Math.random()*2);
                 x.material = wallMat;
                 x.isPickable = false;
             cubeGrid[a_slot] = {"type":"wall","destructable":false}
@@ -733,14 +944,25 @@
                     names.push(m.name)
                 } else if(/reflector[0-9]+/.test(m.name)){
                     names.push(m.name)
+                } else if(/mirror[0-9]+/.test(m.name)){
+                    names.push(m.name)
+                } else if(/slotI[0-9]+/.test(m.name)){
+                    names.push(m.name)
                 } 
             });
             names.forEach(m=>{
                 disap(scene.getMeshByName(m), copyObj(scene.getMeshByName(m).scaling)) //.dispose()
             })
-            let z = scene.getMeshByName("laserLines");
-            if(z){
+            var z = scene.getMeshByName("laserLines");
+            while(z){
                 z.dispose()
+                z = scene.getMeshByName("laserLines");
+            }
+            
+            // Clear slot texts
+            for(var i=0; i<5; i++){
+                changeText("slotS"+i, "", 7, C[1], 32);
+                changeText("slotT"+i, "", 7, C[1], 32);
             }
         }
         
@@ -772,6 +994,10 @@
                             case 11:
                                 createReflec(slotk, LEVELS[level][1][blk]-10);
                                 break;
+                            case 12:
+                            case 13:
+                                createMirror(slotk, LEVELS[level][1][blk]-12);
+                                break;
                             default:
                                 x = BABYLON.MeshBuilder.CreateBox("gridPoz", {}, scene);
                                 x.position = vec3(gridPos[slotk][0],gridPos[slotk][1],gridPos[slotk][2]);
@@ -787,11 +1013,64 @@
                 }while(slotk%32 != 0);
             }
             for(var i=0; i<LEVELS[level][2].length; i+=2){
-                slots[Math.floor(i/2)] = [LEVELS[level][2][i], LEVELS[level][2][i+1]]
-                changeText("slotT"+Math.floor(i/2),whatName(LEVELS[level][2][i]),7,C[0],36)
-                changeText("slotS"+Math.floor(i/2),LEVELS[level][2][i+1],7,C[1],32)
+                let slotx = Math.floor(i/2);
+                slots[slotx] = [LEVELS[level][2][i], LEVELS[level][2][i+1]];
+                drawOnSlot(slotx, LEVELS[level][2][i]);
+                changeText("slotT"+slotx,whatName(LEVELS[level][2][i]),7,C[0],36)
+                changeText("slotS"+slotx,LEVELS[level][2][i+1],7,C[1],32)
             }
             chooseSlot(0);
+        }
+        
+        /*
+            ######################################################
+            ### Options
+        */
+       
+        // Change quality
+        switchQuality = () => {
+            switch(optQuality){
+                case 0:
+                    optQuality = 1
+                    changeText("qualityLabel2", S[16], 7, C[2], 16);
+                    changeText("qualityLabel3", S[10]+"On", 7, C[3], 16);
+                    changeText("qualityLabel4", S[11]+"Off", 7, C[3], 16);
+                    changeText("qualityLabel5", S[12]+"On", 7, C[3], 16);
+                    changeText("qualityLabel6", S[13]+"On", 7, C[3], 16);
+                    changeText("qualityLabel7", S[14]+"Off", 7, C[3], 16);
+                    break;
+                case 1:
+                    optQuality = 2
+                    changeText("qualityLabel2", S[17], 7, C[2], 16);
+                    changeText("qualityLabel3", S[10]+"On", 7, C[3], 16);
+                    changeText("qualityLabel4", S[11]+"On", 7, C[3], 16);
+                    changeText("qualityLabel5", S[12]+"On", 7, C[3], 16);
+                    changeText("qualityLabel6", S[13]+"On", 7, C[3], 16);
+                    changeText("qualityLabel7", S[14]+"On", 7, C[3], 16);
+                    createDataBlocks();
+                    break;
+                case 2:
+                    optQuality = 0
+                    changeText("qualityLabel2", S[15], 7, C[2], 16);
+                    changeText("qualityLabel3", S[10]+"Off", 7, C[3], 16);
+                    changeText("qualityLabel4", S[11]+"Off", 7, C[3], 16);
+                    changeText("qualityLabel5", S[12]+"Off", 7, C[3], 16);
+                    changeText("qualityLabel6", S[13]+"Off", 7, C[3], 16);
+                    changeText("qualityLabel7", S[14]+"Off", 7, C[3], 16);
+                    removeDataBlocks();
+                    break;
+            }
+        }
+        
+        // Change voice setting
+        switchVoice = () => {
+            if(optVoice){
+                optVoice = 0;
+                changeText("voiceLabel2", S[19], 7, C[2], 16);
+            } else {
+                optVoice = 1;
+                changeText("voiceLabel2", S[18], 7, C[2], 16);
+            }
         }
         
         /*
@@ -806,11 +1085,26 @@
                     plane.scaling    = vec3(3, 3, 1)
                     plane.position   = vec3(24, 6-i*3.25, -30);
                     plane.visibility = 0.5;
-                    plane.material   = eqSlot
+                    plane.material   = eqSlot;
                     plane.rotation.y = Math.PI*0.8;
                 drawText("slotT"+i, "", C[0], 7, vec3(20.5, 6.5-i*3.25, -32.5), Math.PI*0.8, 30);
                 drawText("slotS"+i, "", C[0], 7, vec3(20.5, 5.6-i*3.25, -32.5), Math.PI*0.8, 36);
             }
+        }
+        
+        // Draw options
+        drawOptions = () => {
+            drawText("optionsLabel", "OPTIONS", C[0], 7, vec3(15, 3.5, 15), Math.PI*0.25, 30);
+            drawText("optionsLabel", "Click on option to switch settings", C[0], 7, vec3(15, 3, 15), Math.PI*0.25, 20);
+            drawText("voiceLabel1", "speechSynthesis API", C[1], 7, vec3(15, 2, 15), Math.PI*0.25, 20);
+            drawText("voiceLabel2", S[18], C[2], 7, vec3(15, 1.5, 15), Math.PI*0.25, 16);
+            drawText("qualityLabel1", "Quality", C[1], 7, vec3(15, 0.5, 15), Math.PI*0.25, 20);
+            drawText("qualityLabel2", S[17], C[2], 7, vec3(15, 0, 15), Math.PI*0.25, 16);
+            drawText("qualityLabel3", S[10]+"On", C[3], 7, vec3(15, -0.5, 15), Math.PI*0.25, 16);
+            drawText("qualityLabel4", S[11]+"On", C[3], 7, vec3(15, -0.9, 15), Math.PI*0.25, 16);
+            drawText("qualityLabel5", S[12]+"On", C[3], 7, vec3(15, -1.3, 15), Math.PI*0.25, 16);
+            drawText("qualityLabel6", S[13]+"On", C[3], 7, vec3(15, -1.7, 15), Math.PI*0.25, 16);
+            drawText("qualityLabel7", S[14]+"On", C[3], 7, vec3(15, -2.1, 15), Math.PI*0.25, 16);
         }
         
         // Draw HUD - text and meshes
@@ -822,6 +1116,29 @@
             
             // Draw slots of the toolbar
             drawSlots();
+            
+            // Create hero
+            createHero();
+        }
+        
+        /*
+            ######################################################
+            ### Camera control focus functions
+        */
+       
+        // On click, focus camera on point
+        focusCamera = a_where => {
+            switch(a_where){
+                case 0:
+                    camera.setTarget(vec3(0,0,0));
+                    return
+                case 1:
+                    camera.setTarget(vec3(20.25,0,20));
+                    return
+                case 2:
+                    camera.setTarget(vec3(-20.25,0,20));
+                    return
+            }
         }
         
         /*
@@ -836,10 +1153,10 @@
                 var z = -12
                 do{
                     if(logo[i]&1){
-                        x = BABYLON.MeshBuilder.CreateBox("logo", {}, scene);
-                        x.position = vec3(z*1.2, i*1.2, -40);
-                        x.scaling  = vec3(1.2, 1.2, 0.25);
-                        x.material = logoMaterials[ranRng(5)];
+                        var x = BABYLON.MeshBuilder.CreateBox("logo", {}, scene);
+                            x.position = vec3(z*1.2, i*1.2, -40);
+                            x.scaling  = vec3(1.2, 1.2, 0.25);
+                            x.material = logoMaterials[ranRng(5)];
                         hl.addMesh(x, tex(1, 1, 1));
                     }
                     z++;
@@ -847,11 +1164,25 @@
             }
             
             // Append game start button and creators
-            drawText("logoClick", S[0], "#ffffff", 24, vec3(0, -2, -40), Math.PI);
-            drawText("creators", S[4].split("").join(" "), "#777777", 24, vec3(0, -10, -40), Math.PI, 32);
+            drawText("logoClick", S[0], C[5], 24, vec3(0, -2, -40), Math.PI);
+            drawText("creators", S[4].split("").join(" "), C[4], 24, vec3(0, -10, -40), Math.PI, 32);
+            drawText("l_options1", S[6], C[4], 24, vec3(20, -12, -40), Math.PI*0.8, 40);
+            drawText("l_achiv1", S[7], C[4], 24, vec3(-20, -12, -40), Math.PI*1.2, 40);
+            drawText("l_game1", S[8], C[4], 24, vec3(40, -9, 25), Math.PI*0.35, 40);
+            drawText("l_achiv2", S[9], C[4], 24, vec3(25, -9, 40), Math.PI*0.15, 40);
             
             // Set game state
             gameState = 1;
+        }
+        
+        // When button below logo is clicked
+        logoClicked = a_mesh => {
+            // Dispose clicked mesh and creators
+            disap(a_mesh);
+            disap(scene.getMeshByName("creators"));
+            
+            // Start game after timeout
+            setTimeout(()=>{startGame();}, 300);
         }
         
         // Start game after clicking start button
@@ -863,7 +1194,7 @@
                     m.position.y += 50;
                     m.position.z -= 100;
                     hl.removeMesh(m);
-                } else if(m.name == "data"){
+                } else if(/data[0-9]+/.test(m.name)){
                     goBack(m, -100);
                 }
             });
@@ -890,6 +1221,9 @@
                 }
             }
             
+            // Change game state
+            gameState = 2;
+            
             // Start processing first level
             processLevel();
         }
@@ -906,14 +1240,13 @@
             fpsLabel.innerHTML = engine.getFps().toFixed() + " fps";
             
             // Update meshes
-            var pickResult = scene.pick(scene.pointerX, scene.pointerY);
-            scene.meshes.forEach(function(m){
-                if(m.name == "logo" && Math.random() <= 0.005){
-                    m.material = logoMaterials[ranRng(5)]
-                } else if(m.name == "grid"){
-                    m.material = nonGrid;
-                }
-            });
+            if(optQuality > 1){
+                scene.meshes.forEach(function(m){
+                    if(m.name == "logo" && Math.random() <= 0.005){
+                        m.material = logoMaterials[ranRng(5)];
+                    } 
+                });
+            }
             
             // Board grid selected update
             var pi = scene.pick(can.width/2, can.height/2);
@@ -936,23 +1269,32 @@
             // Deal damage to memory
             if(dmgBuff){
                 shakeCamera = (dmgBuff>3)?3:dmgBuff;
-                actS+=dmgBuff;
-                changeText("storage",actS+"/"+maxS+" B",10,"#ffffff")
+                actS += dmgBuff;
+                changeText("storage", actS+"/"+maxS+" B", 10, "#ffffff");
             } else {
                 shakeCamera = 0;
             }
             
-            // Shake camera
-            switch(shakeCamera){
-                case 1:
-                    camera.position = vec3(randS()*0.05, randS()*0.05, 1+randS()*0.05);
-                    break;
-                case 2:
-                    camera.position = vec3(randS()*0.1, randS()*0.1, 1+randS()*0.1);
-                    break;
-                case 3:
-                    camera.position = vec3(randS()*0.2, randS()*0.2, 1+randS()*0.2);
-                    break;
+            if(optQuality > 0){
+                // Shake camera
+                switch(shakeCamera){
+                    case 1:
+                        camera.position = vec3(randS()*0.05, randS()*0.05, 1+randS()*0.05);
+                        break;
+                    case 2:
+                        camera.position = vec3(randS()*0.1, randS()*0.1, 1+randS()*0.1);
+                        break;
+                    case 3:
+                        camera.position = vec3(randS()*0.2, randS()*0.2, 1+randS()*0.2);
+                        break;
+                }
+                
+                // Hero top and down movement
+                if(isHero){
+                    hero.position.y += Math.sin(heroMov)*0.01;
+                    heroEyes.position.y += Math.sin(heroMov)*0.0075;
+                    heroMov += scene.getAnimationRatio()*0.025*heroIsSpeaking
+                }
             }
             
             // Check if we can place smth
@@ -994,9 +1336,7 @@
             if(pi.pickedMesh){
                 var nme = pi.pickedMesh.name;
                 if(nme == "logoClick"){
-                    disap(pi.pickedMesh);
-                    disap(scene.getMeshByName("creators"));
-                    setTimeout(()=>{startGame();},300);
+                    logoClicked(pi.pickedMesh);
                 } else if(/slot[ST]?0/.test(nme)){
                     chooseSlot(0);
                 } else if(/slot[ST]?1/.test(nme)){
@@ -1007,6 +1347,16 @@
                     chooseSlot(3);
                 } else if(/slot[ST]?4/.test(nme)){
                     chooseSlot(4);
+                } else if(/qualityLabel[0-9]+/.test(nme)){
+                    switchQuality();
+                } else if(/voiceLabel[0-9]+/.test(nme)){
+                    switchVoice();
+                } else if(/l_game[0-9]+/.test(nme)){
+                    focusCamera(0);
+                } else if(/l_options[0-9]+/.test(nme)){
+                    focusCamera(1);
+                } else if(/l_achiv[0-9]+/.test(nme)){
+                    focusCamera(2);
                 }
             }
             
@@ -1022,7 +1372,10 @@
         
         // When mouse is pressed
         can.addEventListener("pointerdown", () => {
+            // Set var that mouse is pressed
             mouseDown = 1;
+            
+            // Handle mouse pressing on grid
             var pi = scene.pick(can.width/2, can.height/2);
             if(pi.pickedMesh){
                 var nme = pi.pickedMesh.name;
@@ -1038,7 +1391,8 @@
         
         // When mouse is realesed
         can.addEventListener("pointerup", () => {
-            mouseDown=0;
+            // Set var that mouse is released
+            mouseDown = 0;
         });
         
         /*
@@ -1048,7 +1402,13 @@
        
         // Main function
         main = () => {
+            // Create scene first
             createScene();
+            
+            // Then create options
+            drawOptions();
+            
+            // Finally create logo and important buttons
             createLogo();
         };
         main();
