@@ -106,13 +106,25 @@
             heroIsSpeaking = 1,  // Movement speed ratio
             dialogs = [],        // For ppl who has speechSynthesis disabled; Dialogs queue
             isTalking = false,   // For ppl who has speechSynthesis disabled; Check if hero is talking
-            whichSequance = 0;   // Tells which dialog is spoken
+            whichSequance = 0,   // Tells which dialog is spoken
+            isHighlight = -1,    // Check if slot is highlighted
+            subSize = 30;        // Set size of subtitles
             
-        var optVoice = 1,            // If true, speechSynthesis API is in use
-            optQuality = 2,          // 0 - low, 1 - medium, 2 - high    
-            optSensitiv = 300,       // Mouse sensitivity; Default: 300
-            optAngle = Math.PI*0.25; // Options rotation
-            optCanPlace = false;     // Check if placing/rotating/deleting is allowed [used for dialogs]
+        var optVoice = 1,             // If true, speechSynthesis API is in use
+            optQuality = 2,           // 0 - low, 1 - medium, 2 - high    
+            optSensitiv = 300,        // Mouse sensitivity; Default: 300
+            optAngle = Math.PI*0.25,  // Options rotation
+            optAngle2 = Math.PI*1.75, // Options rotation
+            optCanPlace = false;      // Check if placing/rotating/deleting is allowed [used for dialogs]
+            
+            
+        var gameEnd = false,         // End of the game?
+            skySeq = 0,              // Number used for animating ending sky
+            achiv = 0,               // Unlocked achievements
+            isGameover = false,      // Check if it's gameover
+            stopCameraShake = false; // Should camera shake be stopped
+            
+        var VRhelper;   // VR experience helper
             
         // Array containg strings
         S = [
@@ -142,19 +154,30 @@
             
             "speechSynthesis API",  // 20
             
-            "Crystal",   // 21
-            "Splitter"   // 22
+            "Crystal",    // 21
+            "Splitter",   // 22
+            
+            "<- Game",    // 23
+            "Options ->", // 24
         ];
         
         // Array containg colors
         C = ["#cacae7","#8e8ecc","#693e73","#555555","#777777","#FFFFFF"];
         
         LEVELS = [
-        [[1,1],[5,1],[10,1000,12,1000,14,1000,16,1000]],
-        [[512,4194304],[5,2],[10,1]],
+        [[2294399266,1715535888],[9,9,9,6,9,9,9,9,9,9,9,9,2,9,9,9,9],[10,2]], // Place/Rotate/Destroy tutorial
         [[201326592,536903708],[9,7,1,9,9,9,9],[10,4]],
-        [[463496319,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]],
-        [[2172747992,2122416513],[9,9,9,9,2,4,9,9,2,4,9,9,2,4,9,7,7,7,7,7,7],[10,6]]
+        [[2172747992,2122416513],[9,9,9,9,2,4,9,9,2,4,9,9,2,4,9,7,7,7,7,7,7],[10,6]],
+        [[304120038,543966744],[9,9,9,9,9,9,9,4,14,9,7,9,9,9,9,9,9,9,9],[10,3]], // Crystal tutorial
+        [[2416203009,58221060],[9,9,3,9,9,9,9,9,9,9,9,9,9,11,6,9,9,9],[10,6]],
+        [[2610979967,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,13,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]],
+        [[134758400,20],[2,9,9,8,14],[10,1,12,2]], // Mirror tutorial
+        [[4294901761,33619967],[4,14,15,14,15,15,14,14,15,14,14,14,15,15,14,15,14,15,15,14,14,15,15,15,14,14,14,15,15,15,14,14,14,7],[10,1]],
+        [[182912,100794496],[9,8,9,5,9,9,9,4,9,9],[10,4,16,1]], // Splitter tutorial
+        [[805572608,4734976],[1,11,11,9,6,10,6],[10,2,16,1]],
+        [[24576,1048578],[1,5,8,7],[10,3,14,1,16,2]],
+        [[16812313,10066176],[8,2,4,8,2,6,8,8,2,8,2,8,2,8,2],[10,3,16,1]],
+        [[2164260888,2550136961],[5,5,8,6,8,6,7,7,3],[10,8,16,7]]
         ]
         
         // Game grid
@@ -266,6 +289,20 @@
         
         /*
             ######################################################
+            ### VR
+        */
+       
+        enterVR = () => {
+            VRhelper.webVRCamera.setTarget(vec3(0,0,0));
+        } 
+       
+        leaveVR = () => {
+            VRhelper.deviceOrientationCamera.setTarget(vec3(0,0,0));
+            
+        }
+        
+        /*
+            ######################################################
             ### Scene creation
         */
        
@@ -321,15 +358,21 @@
             hl = new BABYLON.HighlightLayer("hl1", scene);
             
             // Create camera
-            camera = new BABYLON.FreeCamera("camera", camOff, scene);
-            camera.inertia = 0;
-            camera.angularSensibility = optSensitiv;
-            
-            // Target camera at 0,0,0
-            camera.setTarget(vec3(0,0,0));
-            camera.attachControl(can, true);
-            camera.inputs.remove(camera.inputs.attached.keyboard);
-            
+            VRhelper = scene.createDefaultVRExperience();
+            VRhelper.onEnteringVRObservable.add(()=>{enterVR();})
+            VRhelper.onExitingVRObservable.add(()=>{leaveVR();})
+            VRhelper.deviceOrientationCamera.inertia = 0;
+            VRhelper.deviceOrientationCamera.position = camOff;
+            VRhelper.deviceOrientationCamera.angularSensibility = optSensitiv;
+            VRhelper.deviceOrientationCamera.attachControl(can, true);
+            VRhelper.deviceOrientationCamera.inputs.remove(VRhelper.deviceOrientationCamera.inputs.attached.keyboard);
+            VRhelper.webVRCamera.inertia = 0;
+            VRhelper.webVRCamera.position = camOff;
+            VRhelper.webVRCamera.angularSensibility = optSensitiv;
+            VRhelper.webVRCamera.attachControl(can, true);
+            VRhelper.webVRCamera.inputs.remove(VRhelper.webVRCamera.inputs.attached.keyboard);
+            VRhelper.teleportationEnabled = false;
+           
             // Create materials
             materialCreation();
             
@@ -339,15 +382,13 @@
             // Create cursor pointer
             var cur = BABYLON.MeshBuilder.CreateBox("cursor", {}, scene);
                 cur.scaling    = vec3(0.01, 0.01, 0.01);
-                cur.parent     = camera;
                 cur.position   = vec3(0, 0, 2);
                 cur.material   = curMat;
                 cur.isPickable = false
                 
             // Create subtitles
-            drawText("subs", "", C[5], 40, vec3(0, -7, 18), 0, 20);
+            drawText("subs", "", C[5], 40, vec3(0, -7, 18), 0, subSize);
             var l = scene.getMeshByName("subs");
-                l.parent     = camera;
                 l.isPickable = false;
             
             // Create glow layer
@@ -359,6 +400,11 @@
                     result.set(0,0,0,0);
                 }
             }
+            scene.onBeforeCameraRenderObservable.add((camera) => {
+                scene.getMeshByName("subs").parent = camera;
+                scene.getMeshByName("cursor").parent = camera;
+            })
+            leaveVR();
         }
      
         /*
@@ -371,6 +417,42 @@
             a.volume = 0.5;
         playClick = () => {
             a.play();
+        }
+        
+        /*
+            ######################################################
+            ### Saving/Loading local storage
+        */
+       
+        // Save achievements
+        saveAchiv = () => {
+            localStorage.setItem("BACKUPachiv", achiv);
+        }
+        
+        /*
+            ######################################################
+            ### Game Over
+        */
+       
+        // Ending 3 - 2many memory leaked
+        fogGG = () => {
+            if(scene.fogStart > 5){
+                scene.fogEnd -= 0.25;
+                scene.fogStart -= 0.25;
+                
+                if(scene.fogColor.r-0.01 >= 0){scene.fogColor.r -= 0.01;}
+                if(scene.fogColor.g-0.01 >= 0){scene.fogColor.g -= 0.01;}
+                if(scene.fogColor.b-0.01 >= 0){scene.fogColor.b -= 0.01;}
+                if(scene.clearColor.r-0.01 >= 0){scene.clearColor.r -= 0.01;}
+                if(scene.clearColor.g-0.01 >= 0){scene.clearColor.g -= 0.01;}
+                if(scene.clearColor.b-0.01 >= 0){scene.clearColor.b -= 0.01;}
+                setTimeout(()=>{fogGG()},10);
+            } else {
+                stopCameraShake = true;
+                drawText("gameoverLabel", "Out of memory - system shotdown", C[5], 24, vec3(0, -2, -20), Math.PI, 30);
+                drawText("gameoverLabel2", "GAME OVER", "#ff0000", 24, vec3(0, -3, -20), Math.PI, 40);
+                drawText("gameoverLabel3", "Click here to restart game", C[5], 24, vec3(0, -4, -20), Math.PI);
+            }
         }
         
         /*
@@ -392,14 +474,14 @@
             for(var i=0; i<a_voices.length; i++){
                 if(a_voices[i].lang == "en-US"){
                     vojc = a_voices[i];
-                    changeText("voiceLabel1", S[20], 7, C[1], 20);
-                    changeText("voiceLabel2", S[18], 7, C[2], 16);
+                    changeText("voiceLabel1", S[20], 10, C[1], 38);
+                    changeText("voiceLabel2", S[18], 10, C[2], 32);
                     optVoice = 1;
                     return;
                 }
             }
-            changeText("voiceLabel1", S[20], 7, C[3], 20);
-            changeText("voiceLabel2", "Not supported / no english voice", 7, C[3], 16);
+            changeText("voiceLabel1", S[20], 10, C[3], 38);
+            changeText("voiceLabel2", "Not supported / no english voice", 10, C[3], 32);
             optVoice = -1;
         }
     
@@ -408,11 +490,11 @@
             if(dialogs.length && !isTalking){
                 isTalking = true;
                 var sentence = dialogs.shift();
-                changeText("subs",sentence[0],40,C[5],20);
+                changeText("subs",sentence[0],40,C[5],subSize);
                 changeEyes(sentence[1], sentence[2]);
                 heroIsSpeaking = 20;
                 setTimeout(()=>{
-                    changeText("subs","",40,C[5],20);
+                    changeText("subs","",40,C[5],subSize);
                     heroIsSpeaking = 1;
                     isTalking = false;
                     saySmthDis();
@@ -430,8 +512,8 @@
                     pre.pitch   = 2;
                     pre.rate    = a_rate;
                     pre.voice   = vojc;
-                    pre.onstart = ()=>{changeText("subs",a_text,40,C[5],20);heroIsSpeaking=20;changeEyes(a_left, a_right)};
-                    pre.onend   = ()=>{changeText("subs","",40,C[5],20);heroIsSpeaking=1;dialogs.shift();checkIfEnd()};
+                    pre.onstart = ()=>{changeText("subs",a_text,40,C[5],subSize);heroIsSpeaking=20;changeEyes(a_left, a_right)};
+                    pre.onend   = ()=>{changeText("subs","",40,C[5],subSize);heroIsSpeaking=1;dialogs.shift();checkIfEnd()};
                 window.speechSynthesis.speak(pre);
             } else {
                 dialogs.push([a_text, a_left, a_right]);
@@ -479,11 +561,24 @@
         
         // Do smth when dialog ended
         endDialog = () => {
-            switch(whichSequance){
+            let z = whichSequance;
+            whichSequance = 0;
+            switch(z){
                 case 2:
                     processLevel();
+                    speakHero(2);
+                    break;
+                case 4:
+                    highlightObject(49);
+                    speakHero(4);
+                    break;
+                case 6:
                     optCanPlace = true;
-                    whichSequance = 0;
+                    break;
+                case 8:
+                    optCanPlace = true;
+                    level++;
+                    processLevel();
                     break;
             }
         }
@@ -493,13 +588,44 @@
             whichSequance = a_which+1;
             switch(a_which){
                 case 0:
-                    saySmth("X", 2, "O", "O");
-                    //saySmth("Well. Look who we get here!", 1.1, "O", "O");
-                    //saySmth("I thought you will never decide to cooperate.", 1.1, "-", "-");
-                    //saySmth("But here you are, so let's get down to business.", 1.1, "o", "o");
-                    //saySmth("I need you to do a backup.", 0.9, "o", "o");
-                    //saySmth("And you know - it's extremly important.", 0.9, "!", "!");
-                    //saySmth("I might not forgive you if you fail.", 0.9, "U", "U");
+                    saySmth("Well. Look who we get here!", 1.1, "O", "O");
+                    saySmth("I thought you will never decide to cooperate.", 1.1, "-", "-");
+                    saySmth("But here you are, so let's get down to business.", 1.1, "o", "o");
+                    saySmth("I need you to do a backup of me.", 0.9, "o", "o");
+                    saySmth("And you know - it's extremly important.", 0.9, "!", "!");
+                    saySmth("I might not forgive you if you fail.", 0.9, "U", "U");
+                    break;
+                case 2:
+                    saySmth("Here's memory block.", 0.9, "<", "<");
+                    saySmth("Memory will start flowing through blue tunnel", 1, "o", "o");
+                    saySmth("as soon as You will do something on the board", 1, "@", "@");
+                    saySmth("like placing, rotating or deleting objects.", 1, "@", "@");
+                    saySmth("So keep that in mind.", 1, "^", "^");
+                    saySmth("That memory must go through red tunnel to allow Us to move to next block.", 1, "o", "o");
+                    saySmth("To do this, let's use Reflector to reflect memory.", 0.9, "U", "U");
+                    break;
+                case 4:
+                    saySmth("Click on highlighted slot to place Reflector.", 0.9, "<", "<");
+                    break;
+                case 6:
+                    optCanPlace = false;
+                    saySmth("Well done. Memory is now reflected to somewhere else.", 1, "^", "^");
+                    saySmth("Try not to create memory leak by letting memory flow outside block", 1, "!", "!");
+                    saySmth("or You will damage Our memory.", 1, "!", "!");
+                    saySmth("If it gets over limit, system will crash!!!", 1, "X", "X");
+                    saySmth("OK, let's move to next block", 1, "O", "O");
+                    break;
+                case 740:
+                    window.speechSynthesis.cancel();
+                    resetLevel();
+                    optCanPlace = false;
+                    saySmth("WHAT.", 2, "\\", "/");
+                    saySmth("HAVE.", 2, "@>", "{|");
+                    saySmth("YOU.", 2, "#$1", "*(0");
+                    saySmth("DONE!!!", 2, "!@52,{", "%$.5^");
+                    achiv |= 4;
+                    saveAchiv();
+                    fogGG();
                     break;
             }
         }
@@ -536,6 +662,17 @@
                     ctx.clearRect(0, 0, a_wid*60, a_height*60)
                     ctx.font = cFont;
                 dynamo.drawText(a_text, null, null, cFont, a_color, "transparent", true, true);
+            }
+        }
+        
+        /*
+            ######################################################
+            ### Tutorial
+        */
+       
+        handleHighlight = a_slot => {
+            if(a_slot == 49 && level == 0){
+                speakHero(6);
             }
         }
         
@@ -732,33 +869,41 @@
         // Place object
         placeSmth = a_slot => {
             if(optCanPlace){
-                if(slots[slotC][0] != 0 && slots[slotC][1] > 0 && cubeGrid[a_slot]["type"] == "none"){
-                    switch(slots[slotC][0]){
-                        case 10:
-                            createReflec(a_slot, 0, true);
-                            break;
-                        case 12:
-                            createMirror(a_slot, 0, true);
-                            break;
-                        case 14:
-                            createCryst(a_slot, 0, true);
-                            break;
-                        case 16:
-                            createSplitter(a_slot, 0, true);
-                            break;
+                if(isHighlight == -1 || isHighlight == a_slot){
+                    if(isHighlight != -1){
+                        handleHighlight(a_slot);
+                        isHighlight = -1;
+                        let a = scene.getMeshByName("highlightLines");
+                        if(a){a.dispose();}
                     }
-                    
-                    // Play sound
-                    playClick();
-                    
-                    // Remove that object from toolbar
-                    slots[slotC][1]--;
-                    changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
-                    
-                    // Recreate laser
-                    startLaser();
-                } else if(cubeGrid[a_slot]["type"] != "none" && cubeGrid[a_slot]["destructable"]){
-                    rotateSmth(a_slot);
+                    if(slots[slotC][0] != 0 && slots[slotC][1] > 0 && cubeGrid[a_slot]["type"] == "none"){
+                        switch(slots[slotC][0]){
+                            case 10:
+                                createReflec(a_slot, 0, true);
+                                break;
+                            case 12:
+                                createMirror(a_slot, 0, true);
+                                break;
+                            case 14:
+                                createCryst(a_slot, 0, true);
+                                break;
+                            case 16:
+                                createSplitter(a_slot, 0, true);
+                                break;
+                        }
+                        
+                        // Play sound
+                        playClick();
+                        
+                        // Remove that object from toolbar
+                        slots[slotC][1]--;
+                        changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
+                        
+                        // Recreate laser
+                        startLaser();
+                    } else if(cubeGrid[a_slot]["type"] != "none" && cubeGrid[a_slot]["destructable"]){
+                        rotateSmth(a_slot);
+                    }
                 }
             }
         }
@@ -807,6 +952,7 @@
                             }
                             break;
                     }
+                    playClick();
                     startLaser();
                 }
             }
@@ -1007,19 +1153,21 @@
             
             // Check if level is completed
             if(exits[0]==exits[1] && exits[1] != 0){
-                if(++level!=LEVELS.length){
-                    setTimeout(processLevel, 250);
-                    let o = ranRng(3);
-                    if(o==0){
-                        saySmth("Good job!", 1.5);
-                    } else if(i==1){
-                        saySmth("Very nice", 0.8);
-                    } else if(i==2){
-                        saySmth("Outstanding!", 0.8);
+                if(level != 0){
+                    if(++level!=LEVELS.length){
+                        setTimeout(processLevel, 250);
+                        let o = ranRng(3);
+                        if(o==0){
+                            saySmth("Good job!", 1.5);
+                        } else if(o==1){
+                            saySmth("Very nice", 0.8);
+                        } else if(o==2){
+                            saySmth("Outstanding!", 0.8);
+                        }
+                    } else {
+                        setTimeout(resetLevel, 250);
+                        console.log("!");
                     }
-                } else {
-                    setTimeout(resetLevel, 250);
-                    console.log("!");
                 }
             }
         }
@@ -1328,32 +1476,32 @@
         switchQuality = () => {
             switch(optQuality){
                 case 0:
-                    optQuality = 1
-                    changeText("qualityLabel2", S[16], 7, C[2], 16);
-                    changeText("qualityLabel3", S[10]+"On", 7, C[3], 16);
-                    changeText("qualityLabel4", S[11]+"Off", 7, C[3], 16);
-                    changeText("qualityLabel5", S[12]+"On", 7, C[3], 16);
-                    changeText("qualityLabel6", S[13]+"On", 7, C[3], 16);
-                    changeText("qualityLabel7", S[14]+"Off", 7, C[3], 16);
+                    optQuality = 1;
+                    changeText("qualityLabel2", S[16], 10, C[2], 32);
+                    changeText("qualityLabel3", S[10]+"On", 10, C[3], 24);
+                    changeText("qualityLabel4", S[11]+"Off", 10, C[3], 24);
+                    changeText("qualityLabel5", S[12]+"On", 10, C[3], 24);
+                    changeText("qualityLabel6", S[13]+"On", 10, C[3], 24);
+                    changeText("qualityLabel7", S[14]+"Off", 10, C[3], 24);
                     break;
                 case 1:
-                    optQuality = 2
-                    changeText("qualityLabel2", S[17], 7, C[2], 16);
-                    changeText("qualityLabel3", S[10]+"On", 7, C[3], 16);
-                    changeText("qualityLabel4", S[11]+"On", 7, C[3], 16);
-                    changeText("qualityLabel5", S[12]+"On", 7, C[3], 16);
-                    changeText("qualityLabel6", S[13]+"On", 7, C[3], 16);
-                    changeText("qualityLabel7", S[14]+"On", 7, C[3], 16);
+                    optQuality = 2;
+                    changeText("qualityLabel2", S[17], 10, C[2], 32);
+                    changeText("qualityLabel3", S[10]+"On", 10, C[3], 24);
+                    changeText("qualityLabel4", S[11]+"On", 10, C[3], 24);
+                    changeText("qualityLabel5", S[12]+"On", 10, C[3], 24);
+                    changeText("qualityLabel6", S[13]+"On", 10, C[3], 24);
+                    changeText("qualityLabel7", S[14]+"On", 10, C[3], 24);
                     createDataBlocks();
                     break;
                 case 2:
-                    optQuality = 0
-                    changeText("qualityLabel2", S[15], 7, C[2], 16);
-                    changeText("qualityLabel3", S[10]+"Off", 7, C[3], 16);
-                    changeText("qualityLabel4", S[11]+"Off", 7, C[3], 16);
-                    changeText("qualityLabel5", S[12]+"Off", 7, C[3], 16);
-                    changeText("qualityLabel6", S[13]+"Off", 7, C[3], 16);
-                    changeText("qualityLabel7", S[14]+"Off", 7, C[3], 16);
+                    optQuality = 0;
+                    changeText("qualityLabel2", S[15], 10, C[2], 32);
+                    changeText("qualityLabel3", S[10]+"Off", 10, C[3], 24);
+                    changeText("qualityLabel4", S[11]+"Off", 10, C[3], 24);
+                    changeText("qualityLabel5", S[12]+"Off", 10, C[3], 24);
+                    changeText("qualityLabel6", S[13]+"Off", 10, C[3], 24);
+                    changeText("qualityLabel7", S[14]+"Off", 10, C[3], 24);
                     removeDataBlocks();
                     break;
             }
@@ -1363,10 +1511,10 @@
         switchVoice = () => {
             if(optVoice){
                 optVoice = 0;
-                changeText("voiceLabel2", S[19], 7, C[2], 16);
+                changeText("voiceLabel2", S[19], 10, C[2], 32);
             } else {
                 optVoice = 1;
-                changeText("voiceLabel2", S[18], 7, C[2], 16);
+                changeText("voiceLabel2", S[18], 10, C[2], 32);
             }
         }
         
@@ -1376,13 +1524,17 @@
         */
         
         // Highlight object, used in dialogs
-        highlightObject = () => {
-            var path = [{'x':-0.25 +3*GRIDWID,'y':-0.25 +3*GRIDWID,'z':-44.5},
-            {'x':GRIDWID+0.25 +3*GRIDWID,'y':-0.25 +3*GRIDWID,'z':-44.5},
-            {'x':GRIDWID+0.25 +3*GRIDWID,'y':GRIDWID+0.25 +3*GRIDWID,'z':-44.5},
-            {'x':-0.25 +3*GRIDWID,'y':GRIDWID+0.25 +3*GRIDWID,'z':-44.5},
-            {'x':-0.25 +3*GRIDWID,'y':-0.25 +3*GRIDWID,'z':-44.5}];
-            var zz = BABYLON.MeshBuilder.CreateLines("xddd", {points: path, useVertexAlpha: false}, scene);
+        highlightObject = a_slot => {
+            isHighlight = a_slot;
+            a_slot = 63-a_slot;
+            let ex = a_slot%8;
+            let ey = Math.floor(a_slot/8);
+            var path = [{'x':0 +(3-ex)*GRIDWID,'y':0 +(3-ey)*GRIDWID,'z':-44},
+            {'x':GRIDWID +(3-ex)*GRIDWID,'y':0 +(3-ey)*GRIDWID,'z':-44},
+            {'x':GRIDWID +(3-ex)*GRIDWID,'y':GRIDWID +(3-ey)*GRIDWID,'z':-44},
+            {'x':0 +(3-ex)*GRIDWID,'y':GRIDWID +(3-ey)*GRIDWID,'z':-44},
+            {'x':0 +(3-ex)*GRIDWID,'y':0 +(3-ey)*GRIDWID,'z':-44}];
+            var zz = BABYLON.MeshBuilder.CreateLines("highlightLines", {points: path, useVertexAlpha: false}, scene);
                 zz.isPickable = false;
         }
         
@@ -1402,17 +1554,33 @@
         
         // Draw options
         drawOptions = () => {
-            drawText("optionsLabel", "OPTIONS", C[0], 7, vec3(15, 3.5, 15), optAngle, 30);
-            drawText("optionsLabel", "Click on option to switch settings", C[0], 7, vec3(15, 3, 15), optAngle, 20);
-            drawText("voiceLabel1", "speechSynthesis API", C[1], 7, vec3(15, 2, 15),optAngle, 20);
-            drawText("voiceLabel2", S[18], C[2], 7, vec3(15, 1.5, 15), optAngle, 16);
-            drawText("qualityLabel1", "Quality", C[1], 7, vec3(15, 0.5, 15), optAngle, 20);
-            drawText("qualityLabel2", S[17], C[2], 7, vec3(15, 0, 15), optAngle, 16);
-            drawText("qualityLabel3", S[10]+"On", C[3], 7, vec3(15, -0.5, 15), optAngle, 16);
-            drawText("qualityLabel4", S[11]+"On", C[3], 7, vec3(15, -0.9, 15), optAngle, 16);
-            drawText("qualityLabel5", S[12]+"On", C[3], 7, vec3(15, -1.3, 15), optAngle, 16);
-            drawText("qualityLabel6", S[13]+"On", C[3], 7, vec3(15, -1.7, 15), optAngle, 16);
-            drawText("qualityLabel7", S[14]+"On", C[3], 7, vec3(15, -2.1, 15), optAngle, 16);
+            drawText("optionsLabel", "OPTIONS", C[0], 10, vec3(15, 4.25, 15), optAngle, 50);
+            drawText("voiceLabel1", "speechSynthesis API", C[1], 10, vec3(15, 3, 15),optAngle, 38);
+            drawText("voiceLabel2", S[18], C[2], 10, vec3(15, 2.25, 15), optAngle, 32);
+            drawText("qualityLabel1", "Quality", C[1], 10, vec3(15, 1, 15), optAngle, 38);
+            drawText("qualityLabel2", S[17], C[2], 10, vec3(15, 0.25, 15), optAngle, 32);
+            drawText("qualityLabel3", S[10]+"On", C[3], 10, vec3(15, -0.5, 15), optAngle, 24);
+            drawText("qualityLabel4", S[11]+"On", C[3], 10, vec3(15, -0.9, 15), optAngle, 24);
+            drawText("qualityLabel5", S[12]+"On", C[3], 10, vec3(15, -1.3, 15), optAngle, 24);
+            drawText("qualityLabel6", S[13]+"On", C[3], 10, vec3(15, -1.7, 15), optAngle, 24);
+            drawText("qualityLabel7", S[14]+"On", C[3], 10, vec3(15, -2.1, 15), optAngle, 24);
+            drawText("deleteLabel", "DELETE ACHIEVEMENTS DATA", "#770000", 10, vec3(15, -5, 15), optAngle, 24);
+        }
+        
+        // Draw achievements
+        drawAchievments = () => {
+            drawText("achivLabel", "ACHIEVEMENTS", C[0], 10, vec3(-15, 4.25, 15), optAngle2, 50);
+            if(!localStorage.getItem('BACKUPachiv')){
+                localStorage.setItem('BACKUPachiv', 0);
+            } else {
+                achiv = Number(localStorage.getItem('BACKUPachiv'));
+            }
+            drawText("achiv1Title", "Backup succesful?", (achiv&1)?C[2]:C[4], 10, vec3(-15, 3, 15), optAngle2, 30);
+            drawText("achiv1Title", "Complete game with some memory lost", (achiv&1)?C[1]:C[4], 10, vec3(-15, 2.25, 15), optAngle2, 24);
+            drawText("achiv2Title", "Back Entrence", (achiv&2)?C[2]:C[4], 10, vec3(-15, 1, 15), optAngle2, 30);
+            drawText("achiv2Title", "Complete game without memory lost", (achiv&2)?C[1]:C[4], 10, vec3(-15, 0.25, 15), optAngle2, 24);
+            drawText("achiv3Title", "No way to go back", (achiv&4)?C[2]:C[4], 10, vec3(-15, -1, 15), optAngle2, 30);
+            drawText("achiv3Title", "Lost game because of memory lost", (achiv&4)?C[1]:C[4], 10, vec3(-15, -1.75, 15), optAngle2, 24);
         }
         
         // Draw HUD - text and meshes
@@ -1439,15 +1607,15 @@
             switch(a_where){
                 case 0:
                     // Game board
-                    camera.setTarget(vec3(0,0,0));
+                    VRhelper.currentVRCamera.setTarget(vec3(0,0,0));
                     return
                 case 1:
                     // Options
-                    camera.setTarget(vec3(20.25,0,20));
+                    VRhelper.currentVRCamera.setTarget(vec3(20.25,0,20));
                     return
                 case 2:
                     // Achievments
-                    camera.setTarget(vec3(-20.25,0,20));
+                    VRhelper.currentVRCamera.setTarget(vec3(-20.25,0,20));
                     return
             }
         }
@@ -1481,6 +1649,8 @@
             drawText("l_achiv1", S[7], C[4], 24, vec3(-20, -12, -40), Math.PI*1.2, 40);
             drawText("l_game1", S[8], C[4], 24, vec3(40, -9, 25), Math.PI*0.35, 40);
             drawText("l_achiv2", S[9], C[4], 24, vec3(25, -9, 40), Math.PI*0.15, 40);
+            drawText("l_game2", S[23], C[4], 24, vec3(-40, -9, 25), Math.PI*1.65, 40);
+            drawText("l_options2", S[24], C[4], 24, vec3(-25, -9, 40), Math.PI*1.85, 40);
             
             // Set game state
             gameState = 1;
@@ -1543,9 +1713,12 @@
             ######################################################
             ### Engine functions
         */
-
+        
         // Register a render loop to repeatedly render the scene
         engine.runRenderLoop(() => {
+            // Get animation ratio
+            var animR = scene.getAnimationRatio();
+            
             // Display FPS
             var fpsLabel = document.getElementById("fps");
             fpsLabel.innerHTML = engine.getFps().toFixed() + " fps";
@@ -1581,30 +1754,20 @@
             if(dmgBuff){
                 shakeCamera = (dmgBuff>3)?3:dmgBuff;
                 actS += dmgBuff;
-                changeText("storage", actS+"/"+maxS+" B", 10, "#ffffff");
+                changeText("storage", actS+"/"+maxS+" B", 10, C[5]);
             } else {
                 shakeCamera = 0;
             }
             
-            if(optQuality > 0){
+            if(optQuality > 0 && !stopCameraShake){
                 // Shake camera
-                switch(shakeCamera){
-                    case 1:
-                        camera.position = vec3(randS()*0.05, randS()*0.05, 1+randS()*0.05);
-                        break;
-                    case 2:
-                        camera.position = vec3(randS()*0.1, randS()*0.1, 1+randS()*0.1);
-                        break;
-                    case 3:
-                        camera.position = vec3(randS()*0.2, randS()*0.2, 1+randS()*0.2);
-                        break;
-                }
+                VRhelper.currentVRCamera.position = vec3(randS()*0.03*shakeCamera, randS()*0.03*shakeCamera, 1+randS()*0.03*shakeCamera);
                 
                 // Hero top and down movement
                 if(isHero){
                     hero.position.y += Math.sin(heroMov)*0.01;
                     heroEyes.position.y += Math.sin(heroMov)*0.0075;
-                    heroMov += scene.getAnimationRatio()*0.025*heroIsSpeaking
+                    heroMov += animR*0.025*heroIsSpeaking
                 }
             }
             
@@ -1612,10 +1775,9 @@
             if(wantToPlace){
                 if(mouseDown){
                     if(delet > 0){
-                        delet -= scene.getAnimationRatio()
+                        delet -= animR;
                     } else {
                         deleteSmth(gridC);
-                        playClick();
                         wantToPlace = false;
                         delet = DELTIME;
                     }
@@ -1629,9 +1791,25 @@
             // Rotate crystal
             for(var i=0; i<cubeGrid.length; i++){
                 if(cubeGrid[i]["type"] == "crystal"){
-                    let calc = Math.PI*scene.getAnimationRatio()/50;
+                    let calc = Math.PI*animR/50;
                     scene.getMeshByName("crystal"+i).rotation.z += (cubeGrid[i]["how"])?-calc:calc;
                 }
+            }
+            
+            if(!isGameover && actS > maxS){
+                isGameover = true;
+                speakHero(740);
+            }
+            
+            // Used for animating sky
+            if(gameEnd){
+                /*
+                scene.fogStart=5
+                scene.fogEnd=5
+                scene.fogColor = tex(1,1,1)
+                */
+                skySeq += Math.PI/1000;
+                scene.clearColor = tex(0.5*Math.abs(Math.sin(skySeq)),0,0);
             }
             
             // Render scene
@@ -1688,6 +1866,12 @@
                 } else if(/l_achiv[0-9]+/.test(nme)){
                     focusCamera(2);
                     playClick();
+                } else if(nme == "deleteLabel"){
+                    localStorage.removeItem('BACKUPachiv');
+                    playClick();
+                } else if(nme == "gameoverLabel3"){
+                    playClick();
+                    location.reload(); 
                 }
             }
             
@@ -1736,8 +1920,9 @@
             // Create scene first
             createScene();
             
-            // Then create options
+            // Then create options and achievements
             drawOptions();
+            drawAchievments();
             
             // Finally create logo and important buttons
             createLogo();
