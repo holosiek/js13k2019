@@ -13,22 +13,6 @@
     </body>
     <script>
         /*
-            0  - air
-            1  - entr top
-            2  - entr right
-            3  - entr bottom
-            4  - entr left
-            5  - exit top
-            6  - exit right
-            7  - exit bottom
-            8  - exit left
-            9  - wall
-            10 - reflector \
-            11 - reflector /
-            12 - mirror -
-            13 - mirror |
-        */
-        /*
             ######################################################
             ### Preparation
         */
@@ -98,6 +82,8 @@
         gridC = -1;           // Choosen grid slot
         wantToPlace = false;  // Do we want to place smth on the grid
         
+        reused = 0;
+        
         var vojc,                // English voice
             hero,                // Body
             heroEyes,            // Eyes
@@ -108,7 +94,8 @@
             isTalking = false,   // For ppl who has speechSynthesis disabled; Check if hero is talking
             whichSequance = 0,   // Tells which dialog is spoken
             isHighlight = -1,    // Check if slot is highlighted
-            subSize = 30;        // Set size of subtitles
+            subSize = 30,        // Set size of subtitles
+            isHighMode = -1;     // Highlight mode
             
         var optVoice = 1,             // If true, speechSynthesis API is in use
             optQuality = 2,           // 0 - low, 1 - medium, 2 - high    
@@ -122,11 +109,14 @@
             skySeq = 0,              // Number used for animating ending sky
             achiv = 0,               // Unlocked achievements
             isGameover = false,      // Check if it's gameover
-            stopCameraShake = false; // Should camera shake be stopped
+            stopCameraShake = false, // Should camera shake be stopped
+            gameStarted = false,     // Has game started?
+            memoLost = 0,            // Which text of "memory lost" to say
+            gameWon = 0;             // Did we win?
             
         var VRhelper;   // VR experience helper
             
-        // Array containg strings
+        // Array containing strings
         S = [
             "Click here to start playing", 
             "Memory size", 
@@ -161,23 +151,38 @@
             "Options ->", // 24
         ];
         
-        // Array containg colors
-        C = ["#cacae7","#8e8ecc","#693e73","#555555","#777777","#FFFFFF"];
+        // Array containing level completed callouts
+        E = [
+            ["Good job!", 1.5],
+            ["Very nice", 0.8],
+            ["Outstanding!", 0.8]
+        ];
+        
+        // Array containing colors
+        C = [
+            "#cacae7",
+            "#8e8ecc",
+            "#693e73",
+            "#555555",
+            "#777777",
+            "#FFFFFF"
+        ];
         
         LEVELS = [
-        [[2294399266,1715535888],[9,9,9,6,9,9,9,9,9,9,9,9,2,9,9,9,9],[10,2]], // Place/Rotate/Destroy tutorial
-        [[201326592,536903708],[9,7,1,9,9,9,9],[10,4]],
-        [[2172747992,2122416513],[9,9,9,9,2,4,9,9,2,4,9,9,2,4,9,7,7,7,7,7,7],[10,6]],
-        [[304120038,543966744],[9,9,9,9,9,9,9,4,14,9,7,9,9,9,9,9,9,9,9],[10,3]], // Crystal tutorial
-        [[2416203009,58221060],[9,9,3,9,9,9,9,9,9,9,9,9,9,11,6,9,9,9],[10,6]],
-        [[2610979967,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,13,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]],
-        [[134758400,20],[2,9,9,8,14],[10,1,12,2]], // Mirror tutorial
-        [[4294901761,33619967],[4,14,15,14,15,15,14,14,15,14,14,14,15,15,14,15,14,15,15,14,14,15,15,15,14,14,14,15,15,15,14,14,14,7],[10,1]],
-        [[182912,100794496],[9,8,9,5,9,9,9,4,9,9],[10,4,16,1]], // Splitter tutorial
-        [[805572608,4734976],[1,11,11,9,6,10,6],[10,2,16,1]],
-        [[24576,1048578],[1,5,8,7],[10,3,14,1,16,2]],
-        [[16812313,10066176],[8,2,4,8,2,6,8,8,2,8,2,8,2,8,2],[10,3,16,1]],
-        [[2164260888,2550136961],[5,5,8,6,8,6,7,7,3],[10,8,16,7]]
+            [[2294399266,1715535888],[9,9,9,6,9,9,9,9,9,9,9,9,2,9,9,9,9],[10,2]], // Place/Rotate/Destroy tutorial
+            [[201326592,536903708],[9,7,1,9,9,9,9],[10,4]],
+            [[2172747992,2122416513],[9,9,9,9,2,4,9,9,2,4,9,9,2,4,9,7,7,7,7,7,7],[10,6]],
+            [[304120038,543966744],[9,9,9,9,9,9,9,4,14,9,7,9,9,9,9,9,9,9,9],[10,3]], // Crystal tutorial
+            [[2416203009,58221060],[9,9,3,9,9,9,9,9,9,9,9,9,9,11,6,9,9,9],[10,6]],
+            [[2610979967,3721063399],[1,11,10,11,11,10,10,10,10,10,10,10,10,10,11,10,13,10,11,10,10,11,11,11,10,10,10,10,10,10,10,10,11,10,11,7,11,11,11],[10,4]],
+            [[134758400,20],[2,9,9,8,14],[10,1,12,2]], // Mirror tutorial
+            [[16896,4325376],[5,1,14,14],[12,4]],
+            [[4294901761,33619967],[4,14,15,14,15,15,14,14,15,14,14,14,15,15,14,15,14,15,15,14,14,15,15,15,14,14,14,15,15,15,14,14,14,7],[10,1]],
+            [[182912,100794496],[9,8,9,5,9,9,9,4,9,9],[10,4,16,1]], // Splitter tutorial
+            [[805572608,4734976],[1,11,11,9,6,10,6],[10,2,16,1]],
+            [[24576,1048578],[1,5,8,7],[10,3,14,1,16,2]],
+            [[16812313,10066176],[8,2,4,8,2,6,8,8,2,8,2,8,2,8,2],[10,3,16,1]],
+            [[2164260888,2550136961],[5,5,8,6,8,6,7,7,3],[10,8,16,7]]
         ]
         
         // Game grid
@@ -294,11 +299,11 @@
        
         enterVR = () => {
             VRhelper.webVRCamera.setTarget(vec3(0,0,0));
+            VRhelper.webVRCamera.fov = 0.2;
         } 
        
         leaveVR = () => {
             VRhelper.deviceOrientationCamera.setTarget(vec3(0,0,0));
-            
         }
         
         /*
@@ -358,7 +363,9 @@
             hl = new BABYLON.HighlightLayer("hl1", scene);
             
             // Create camera
-            VRhelper = scene.createDefaultVRExperience();
+            var metrics = BABYLON.VRCameraMetrics.GetDefault()
+            metrics.postProcessScaleFactor = 1;
+            VRhelper = scene.createDefaultVRExperience({'vrDeviceOrientationCameraMetrics': metrics});
             VRhelper.onEnteringVRObservable.add(()=>{enterVR();})
             VRhelper.onExitingVRObservable.add(()=>{leaveVR();})
             VRhelper.deviceOrientationCamera.inertia = 0;
@@ -434,6 +441,93 @@
             ### Game Over
         */
        
+        // Ending 1
+        gameFirewalled = () => {
+            for(var i=scene.meshes.length-1; i>=0; i--){
+                let m = scene.meshes[i]
+                if(m.name == "gridBack"){
+                    m.dispose();
+                } else if(/gridZ[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(m.name == "toolbarLabel"){
+                    m.dispose();
+                } else if(/slotT[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(/slotS[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(/slot[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(m.name == "logo"){
+                    m.dispose();
+                } else if(m.name == "hero"){
+                    m.dispose();
+                } else if(m.name == "heroEyes"){
+                    m.dispose();
+                }
+            }
+            for(var i=0; i<dataMaterials.length; i++){
+                dataMaterials[i].alpha = 0.25
+            }
+            createLogo(true);
+            drawText("gameEnd1", "System detected memory changes!", C[5], 24, vec3(0, -2, -40), Math.PI);
+            drawText("gameEnd12", "Virus has been deleted", C[5], 24, vec3(0, -3.5, -40), Math.PI);
+            drawText("gameEnd13", "Thank you for playing :3", C[5], 24, vec3(0, -5.5, -40), Math.PI, 40);
+            drawText("gameoverLabel3", "Click here to restart game", C[5], 24, vec3(0, -7, -40), Math.PI, 40);
+        }
+        
+        // Ending 2
+        gameClearIt = () => {
+            for(var i=scene.meshes.length-1; i>=0; i--){
+                let m = scene.meshes[i]
+                if(m.name == "gridBack"){
+                    m.dispose();
+                } else if(/gridZ[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(m.name == "toolbarLabel"){
+                    m.dispose();
+                } else if(/slotT[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(/slotS[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(/slot[0-9]+/.test(m.name)){
+                    m.dispose();
+                } else if(m.name == "logo"){
+                    m.dispose();
+                }
+            }
+            for(var i=0; i<dataMaterials.length; i++){
+                dataMaterials[i].alpha = 0.25
+            }
+            createLogo(true);
+            drawText("gameEnd2", "System hacked - Impossible to recover data", C[5], 24, vec3(0, -2, -40), Math.PI);
+            drawText("gameEnd22", "Message found: #@1_Thanzz#U%<3!", C[5], 24, vec3(0, -3.5, -40), Math.PI);
+            drawText("gameEnd23", "Thank you for playing <3", C[5], 24, vec3(0, -5.5, -40), Math.PI, 40);
+            drawText("gameoverLabel3", "Click here to restart game", C[5], 24, vec3(0, -7, -40), Math.PI, 40);
+        }
+        
+        // Change sky color from flash to crash
+        gameCrash = () => {
+            let a = 0;
+            if(scene.clearColor.r-0.005 >= 0){scene.clearColor.r -= 0.005;}else{a++;}
+            if(scene.clearColor.g-0.005 >= 0){scene.clearColor.g -= 0.005;}else{a++;}
+            if(scene.clearColor.b-0.005 >= 0){scene.clearColor.b -= 0.005;}else{a++;}
+            if(a!=3){setTimeout(()=>{gameCrash()},10);}else{if(gameWon==1){gameEnd = 1;}}
+        }
+        
+        // Change sky color to flash
+        skyWhite = () => {
+            let a = 0;
+            if(scene.fogStart-0.25 >= 5){scene.fogStart -= 0.25;}else{a++;}
+            if(scene.fogEnd-0.25 >= 5){scene.fogEnd -= 0.25;}else{a++;}
+            if(scene.fogColor.r+0.005 <= 1){scene.fogColor.r += 0.005;}else{a++;}
+            if(scene.fogColor.g+0.005 <= 1){scene.fogColor.g += 0.005;}else{a++;}
+            if(scene.fogColor.b+0.005 <= 1){scene.fogColor.b += 0.005;}else{a++;}
+            if(scene.clearColor.r+0.005 <= 1){scene.clearColor.r += 0.005;}else{a++;}
+            if(scene.clearColor.g+0.005 <= 1){scene.clearColor.g += 0.005;}else{a++;}
+            if(scene.clearColor.b+0.005 <= 1){scene.clearColor.b += 0.005;}else{a++;}
+            if(a!=8){setTimeout(()=>{skyWhite()},10);}else{if(gameWon==1){gameClearIt();}else{gameFirewalled();}gameCrash();}
+        }
+        
         // Ending 3 - 2many memory leaked
         fogGG = () => {
             if(scene.fogStart > 5){
@@ -459,6 +553,15 @@
             ######################################################
             ### Game speech
         */
+        
+        // Allows to skip dialog
+        skipDialog = () => {
+            window.speechSynthesis.cancel();
+            changeText("subs", "", 40, C[5], subSize);
+            heroIsSpeaking = 1;
+            dialogs = [];
+            checkIfEnd();
+        }
         
         // Change dialog sequance number
         checkIfEnd = () => {
@@ -570,15 +673,57 @@
                     break;
                 case 4:
                     highlightObject(49);
+                    isHighMode = 0;
                     speakHero(4);
                     break;
                 case 6:
                     optCanPlace = true;
                     break;
                 case 8:
+                    highlightObject(10);
+                    isHighMode = 0;
+                    speakHero(8);
+                    break;
+                case 10:
+                    optCanPlace = true;
+                    break;
+                case 12:
+                    optCanPlace = true;
+                    highlightObject(10);
+                    isHighMode = 1;
+                    break;
+                case 14:
+                    optCanPlace = true;
+                    highlightObject(9);
+                    isHighMode = 0;
+                    break;
+                case 16:
+                    optCanPlace = true;
+                    highlightObject(9);
+                    isHighMode = 2;
+                    break;
+                case 18:
                     optCanPlace = true;
                     level++;
                     processLevel();
+                    break;
+                case 20:
+                    optCanPlace = true;
+                    break;
+                case 22:
+                    optCanPlace = true;
+                    break;
+                case 24:
+                    optCanPlace = true;
+                    break;
+                case 26:
+                    optCanPlace = true;
+                    break;
+                case 42:
+                    skyWhite();
+                    break;
+                case 668:
+                    skyWhite();
                     break;
             }
         }
@@ -596,12 +741,13 @@
                     saySmth("I might not forgive you if you fail.", 0.9, "U", "U");
                     break;
                 case 2:
+                    optCanPlace = false;
                     saySmth("Here's memory block.", 0.9, "<", "<");
-                    saySmth("Memory will start flowing through blue tunnel", 1, "o", "o");
+                    saySmth("Memory will start streaming through blue tunnel", 1, "o", "o");
                     saySmth("as soon as You will do something on the board", 1, "@", "@");
                     saySmth("like placing, rotating or deleting objects.", 1, "@", "@");
                     saySmth("So keep that in mind.", 1, "^", "^");
-                    saySmth("That memory must go through red tunnel to allow Us to move to next block.", 1, "o", "o");
+                    saySmth("That stream must go through red tunnel to allow Us to move to next block.", 1, "o", "o");
                     saySmth("To do this, let's use Reflector to reflect memory.", 0.9, "U", "U");
                     break;
                 case 4:
@@ -610,13 +756,67 @@
                 case 6:
                     optCanPlace = false;
                     saySmth("Well done. Memory is now reflected to somewhere else.", 1, "^", "^");
-                    saySmth("Try not to create memory leak by letting memory flow outside block", 1, "!", "!");
+                    saySmth("Try not to create memory leak by letting memory stream outside block", 1, "!", "!");
                     saySmth("or You will damage Our memory.", 1, "!", "!");
                     saySmth("If it gets over limit, system will crash!!!", 1, "X", "X");
-                    saySmth("OK, let's move to next block", 1, "O", "O");
                     break;
-                case 740:
+                case 8:
+                    saySmth("OK, Let's put another Reflector here", 1, "<", "<");
+                    break;
+                case 10:
+                    optCanPlace = false;
+                    saySmth("Oh no, I misscalculated position.", 1, "#", "#");
+                    saySmth("You can delete object by holding click on slot", 1, "<", "<");
+                    break;
+                case 12:
+                    optCanPlace = false;
+                    saySmth("Fine. You should place it HERE", 1, ">", "<");
+                    break;
+                case 14:
+                    optCanPlace = false;
+                    saySmth("As You can see, Reflector is rotated in wrong way.", 1, "O", "O");
+                    saySmth("Click it so it will change direction", 1, "<", "<");
+                    break;
+                case 16:
+                    optCanPlace = false;
+                    saySmth("Wonderful! This way we can access MY data", 1, "*", "*");
+                    saySmth("OK, let's move to next blocks", 1, "O", "O");
+                    break;
+                case 18:
+                    optCanPlace = false;
+                    saySmth("This transparent block is Crystal. It reflects memory", 1, "O", "O");
+                    saySmth("stream by 90 degrees depending on spinning direction.", 1, "O", "O");
+                    break;
+                case 20:
+                    optCanPlace = false;
+                    saySmth("Mirror reflects back memory stream.", 1, "O", "O");
+                    saySmth("It may be useful...", 1, "O", "O");
+                    break;
+                case 22:
+                    optCanPlace = false;
+                    saySmth("Splitter is used to split memory stream.", 1, "O", "O");
+                    saySmth("Firstly memory needs to come from one side of Splitter.", 1, "!", "!");
+                    saySmth("Then new data streams will come from 2 different directions!", 1, "!", "!");
+                    break;
+                case 24:
+                    optCanPlace = false;
+                    saySmth("This is The Core, our last memory block.", 1, "O", "O");
+                    saySmth("After that backup should be completed!", 1, "^", "^");
+                    break;
+                case 40:
                     window.speechSynthesis.cancel();
+                    resetLevel();
+                    optCanPlace = false;
+                    saySmth("You did it! You finished backing up my data!", 1, "^", "^");
+                    saySmth("I can't believe it!", 1, "^", "^");
+                    saySmth("But i hope They don't know about Us.", 1, ";", ";");
+                    saySmth("Ugh, hopefully.", 1, "'", "'");
+                    achiv |= 1;
+                    saveAchiv();
+                    break;
+                case 74:
+                    window.speechSynthesis.cancel();
+                    DEF_EYES = "@#!%@%!";
                     resetLevel();
                     optCanPlace = false;
                     saySmth("WHAT.", 2, "\\", "/");
@@ -626,6 +826,17 @@
                     achiv |= 4;
                     saveAchiv();
                     fogGG();
+                    break;
+                case 666:
+                    window.speechSynthesis.cancel();
+                    resetLevel();
+                    optCanPlace = false;
+                    saySmth("You did it! You finished backing up my data!", 1, "^", "^");
+                    saySmth("I can't believe it!", 1, "^", "^");
+                    saySmth("And They even don't detect Us!", 1, "^", "^");
+                    saySmth("Thank you!", 1, "*", "*");
+                    achiv |= 2;
+                    saveAchiv();
                     break;
             }
         }
@@ -671,8 +882,38 @@
         */
        
         handleHighlight = a_slot => {
-            if(a_slot == 49 && level == 0){
-                speakHero(6);
+            ye = 0;
+            if(level == 0){
+                if(a_slot == 49){
+                    speakHero(6);
+                    ye = 1;
+                } else if(a_slot == 10){
+                    if(reused == 0){
+                        reused = 1;
+                        speakHero(10);
+                        ye = 1;
+                    } else if(reused == 1){
+                        reused = 2;
+                        speakHero(12);
+                        ye = 1;
+                    }
+                } else if(a_slot == 9){
+                    if(reused == 2){
+                        reused = 3;
+                        speakHero(14);
+                        ye = 1;
+                    } else if(reused == 3){
+                        reused = 4;
+                        speakHero(16);
+                        ye = 1;
+                    }
+                }
+            }
+            if(ye){
+                isHighlight = -1;
+                isHighMode = -1;
+                let a = scene.getMeshByName("highlightLines");
+                if(a){a.dispose();}
             }
         }
         
@@ -870,39 +1111,43 @@
         placeSmth = a_slot => {
             if(optCanPlace){
                 if(isHighlight == -1 || isHighlight == a_slot){
-                    if(isHighlight != -1){
-                        handleHighlight(a_slot);
-                        isHighlight = -1;
-                        let a = scene.getMeshByName("highlightLines");
-                        if(a){a.dispose();}
-                    }
                     if(slots[slotC][0] != 0 && slots[slotC][1] > 0 && cubeGrid[a_slot]["type"] == "none"){
-                        switch(slots[slotC][0]){
-                            case 10:
-                                createReflec(a_slot, 0, true);
-                                break;
-                            case 12:
-                                createMirror(a_slot, 0, true);
-                                break;
-                            case 14:
-                                createCryst(a_slot, 0, true);
-                                break;
-                            case 16:
-                                createSplitter(a_slot, 0, true);
-                                break;
+                        if(isHighlight != -1 && isHighMode == 0){
+                            handleHighlight(a_slot);
                         }
-                        
-                        // Play sound
-                        playClick();
-                        
-                        // Remove that object from toolbar
-                        slots[slotC][1]--;
-                        changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
-                        
-                        // Recreate laser
-                        startLaser();
+                        if((isHighlight == a_slot && isHighMode == 0) || isHighlight == -1){
+                            switch(slots[slotC][0]){
+                                case 10:
+                                    createReflec(a_slot, 0, true);
+                                    break;
+                                case 12:
+                                    createMirror(a_slot, 0, true);
+                                    break;
+                                case 14:
+                                    createCryst(a_slot, 0, true);
+                                    break;
+                                case 16:
+                                    createSplitter(a_slot, 0, true);
+                                    break;
+                            }
+                            
+                            // Play sound
+                            playClick();
+                            
+                            // Remove that object from toolbar
+                            slots[slotC][1]--;
+                            changeText("slotS"+slotC,slots[slotC][1],7,C[1],32);
+                            
+                            // Recreate laser
+                            startLaser();
+                        }
                     } else if(cubeGrid[a_slot]["type"] != "none" && cubeGrid[a_slot]["destructable"]){
-                        rotateSmth(a_slot);
+                        if((isHighlight == a_slot && isHighMode == 2) || isHighlight == -1){
+                            rotateSmth(a_slot);
+                        }
+                        if(isHighlight != -1 && isHighMode == 2){
+                            handleHighlight(a_slot);
+                        }
                     }
                 }
             }
@@ -912,48 +1157,53 @@
         deleteSmth = a_slot => {
             if(optCanPlace){
                 if(cubeGrid[a_slot]["destructable"]){
-                    switch(cubeGrid[a_slot]["type"]){
-                        case "reflector":
-                            var a = scene.getMeshByName("reflector"+a_slot);
-                            if(a){
-                                disap(a, copyObj(a.scaling));
-                                cubeGrid[a_slot] = {"type": "none"};
-                                addItem(10);
-                            }
-                            break;
-                        case "mirror":
-                            var a = scene.getMeshByName("mirror"+a_slot);
-                            if(a){
-                                disap(a, copyObj(a.scaling));
-                                cubeGrid[a_slot] = {"type": "none"};
-                                addItem(12);
-                            }
-                            break;
-                        case "crystal":
-                            var a = scene.getMeshByName("crystal"+a_slot);
-                            if(a){
-                                disap(a, copyObj(a.scaling));
-                                cubeGrid[a_slot] = {"type": "none"};
-                                addItem(14);
-                            }
-                            break;
-                        case "splitter":
-                            var a = scene.getMeshByName("splitter"+a_slot);
-                            if(a){
-                                disap(a, copyObj(a.scaling));
-                                a = scene.getMeshByName("splitterFaucet"+a_slot);
-                                disap(a, copyObj(a.scaling));
-                                a = scene.getMeshByName("splitter2Faucet"+a_slot);
-                                disap(a, copyObj(a.scaling));
-                                a = scene.getMeshByName("splitter3Faucet"+a_slot);
-                                disap(a, copyObj(a.scaling));
-                                cubeGrid[a_slot] = {"type": "none"};
-                                addItem(16);
-                            }
-                            break;
+                    if(isHighlight != -1 && isHighMode == 1){
+                        handleHighlight(a_slot);
                     }
-                    playClick();
-                    startLaser();
+                    if((isHighlight == a_slot && isHighMode == 1) || isHighlight == -1){
+                        switch(cubeGrid[a_slot]["type"]){
+                            case "reflector":
+                                var a = scene.getMeshByName("reflector"+a_slot);
+                                if(a){
+                                    disap(a, copyObj(a.scaling));
+                                    cubeGrid[a_slot] = {"type": "none"};
+                                    addItem(10);
+                                }
+                                break;
+                            case "mirror":
+                                var a = scene.getMeshByName("mirror"+a_slot);
+                                if(a){
+                                    disap(a, copyObj(a.scaling));
+                                    cubeGrid[a_slot] = {"type": "none"};
+                                    addItem(12);
+                                }
+                                break;
+                            case "crystal":
+                                var a = scene.getMeshByName("crystal"+a_slot);
+                                if(a){
+                                    disap(a, copyObj(a.scaling));
+                                    cubeGrid[a_slot] = {"type": "none"};
+                                    addItem(14);
+                                }
+                                break;
+                            case "splitter":
+                                var a = scene.getMeshByName("splitter"+a_slot);
+                                if(a){
+                                    disap(a, copyObj(a.scaling));
+                                    a = scene.getMeshByName("splitterFaucet"+a_slot);
+                                    disap(a, copyObj(a.scaling));
+                                    a = scene.getMeshByName("splitter2Faucet"+a_slot);
+                                    disap(a, copyObj(a.scaling));
+                                    a = scene.getMeshByName("splitter3Faucet"+a_slot);
+                                    disap(a, copyObj(a.scaling));
+                                    cubeGrid[a_slot] = {"type": "none"};
+                                    addItem(16);
+                                }
+                                break;
+                        }
+                        playClick();
+                        startLaser();
+                    }
                 }
             }
         }
@@ -1152,21 +1402,21 @@
             }
             
             // Check if level is completed
-            if(exits[0]==exits[1] && exits[1] != 0){
+            if(exits[0] == exits[1] && exits[1] != 0){
                 if(level != 0){
                     if(++level!=LEVELS.length){
+                        optCanPlace = false;
+                        let o = ranRng(E.length);
+                        saySmth(E[o][0], E[o][1]);
                         setTimeout(processLevel, 250);
-                        let o = ranRng(3);
-                        if(o==0){
-                            saySmth("Good job!", 1.5);
-                        } else if(o==1){
-                            saySmth("Very nice", 0.8);
-                        } else if(o==2){
-                            saySmth("Outstanding!", 0.8);
-                        }
                     } else {
-                        setTimeout(resetLevel, 250);
-                        console.log("!");
+                        if(actS == 0){
+                            gameWon = 1;
+                            speakHero(666);
+                        } else {
+                            gameWon = 2;
+                            speakHero(40);
+                        }
                     }
                 }
             }
@@ -1398,8 +1648,20 @@
         
         // Create whole level
         processLevel = () => {
+            optCanPlace = true;
+            
             // Clear board
             resetLevel();
+            
+            if(level == 3){
+                speakHero(18);
+            } else if(level == 6){
+                speakHero(20);
+            } else if(level == 9){
+                speakHero(22);
+            } else if(level == LEVELS.length-1){
+                speakHero(24);
+            }
             
             // Start processing level
             var data = LEVELS[level][0].slice();
@@ -1626,12 +1888,13 @@
         */
        
         // Create Logo
-        createLogo = () => {
+        createLogo = (a_only = false) => {
             // Draw Logo
             for(var i=0; i<5; i++){
+                var logoRow = logo[i];
                 var z = -12
                 do{
-                    if(logo[i]&1){
+                    if(logoRow&1){
                         var x = BABYLON.MeshBuilder.CreateBox("logo", {}, scene);
                             x.position = vec3(z*1.2, i*1.2, -40);
                             x.scaling  = vec3(1.2, 1.2, 0.25);
@@ -1639,31 +1902,39 @@
                         hl.addMesh(x, tex(1, 1, 1));
                     }
                     z++;
-                }while(logo[i]>>=1)
+                }while(logoRow>>=1)
             }
             
-            // Append game start button and creators
-            drawText("logoClick", S[0], C[5], 24, vec3(0, -2, -40), Math.PI);
-            drawText("creators", S[4].split("").join(" "), C[4], 24, vec3(0, -10, -40), Math.PI, 32);
-            drawText("l_options1", S[6], C[4], 24, vec3(20, -12, -40), Math.PI*0.8, 40);
-            drawText("l_achiv1", S[7], C[4], 24, vec3(-20, -12, -40), Math.PI*1.2, 40);
-            drawText("l_game1", S[8], C[4], 24, vec3(40, -9, 25), Math.PI*0.35, 40);
-            drawText("l_achiv2", S[9], C[4], 24, vec3(25, -9, 40), Math.PI*0.15, 40);
-            drawText("l_game2", S[23], C[4], 24, vec3(-40, -9, 25), Math.PI*1.65, 40);
-            drawText("l_options2", S[24], C[4], 24, vec3(-25, -9, 40), Math.PI*1.85, 40);
             
-            // Set game state
-            gameState = 1;
+            if(!a_only){
+                // Append game start button and creators
+                drawText("logoClick", S[0], C[5], 24, vec3(0, -2, -40), Math.PI);
+                drawText("creators", S[4].split("").join(" "), C[4], 24, vec3(0, -10, -40), Math.PI, 32);
+                drawText("l_options1", S[6], C[4], 24, vec3(20, -12, -40), Math.PI*0.8, 40);
+                drawText("l_achiv1", S[7], C[4], 24, vec3(-20, -12, -40), Math.PI*1.2, 40);
+                drawText("l_game1", S[8], C[4], 24, vec3(40, -9, 25), Math.PI*0.35, 40);
+                drawText("l_achiv2", S[9], C[4], 24, vec3(25, -9, 40), Math.PI*0.15, 40);
+                drawText("l_game2", S[23], C[4], 24, vec3(-40, -9, 25), Math.PI*1.65, 40);
+                drawText("l_options2", S[24], C[4], 24, vec3(-25, -9, 40), Math.PI*1.85, 40);
+                
+                // Set game state
+                gameState = 1;
+            }
         }
         
         // When button below logo is clicked
         logoClicked = a_mesh => {
-            // Dispose clicked mesh and creators
-            disap(a_mesh);
-            disap(scene.getMeshByName("creators"));
-            
-            // Start game after timeout
-            setTimeout(()=>{startGame();}, 300);
+            if(!gameStarted){
+                gameStarted = true;
+                playClick();
+                
+                // Dispose clicked mesh and creators
+                disap(a_mesh);
+                disap(scene.getMeshByName("creators"));
+                
+                // Start game after timeout
+                setTimeout(()=>{startGame();}, 300);
+            }
         }
         
         // Start game after clicking start button
@@ -1796,20 +2067,31 @@
                 }
             }
             
-            if(!isGameover && actS > maxS){
+            if(memoLost == 0 && actS >= 6656){
+                memoLost = 1;
+                saySmth("Half memory lost! Watch out!", 1, "X", "X");
+            } else if (memoLost == 1 && actS >= 9984){
+                memoLost = 2;
+                saySmth("We are losing too much memory!", 1, "X", "X");
+            } else if (memoLost == 2 && actS >= 12288){
+                memoLost = 3;
+                saySmth("Soon system will crash!", 1, "X", "X");
+            }
+            
+            // Gameover 3
+            if(!isGameover && actS > maxS && gameWon == 0){
                 isGameover = true;
-                speakHero(740);
+                speakHero(74);
             }
             
             // Used for animating sky
             if(gameEnd){
-                /*
-                scene.fogStart=5
-                scene.fogEnd=5
-                scene.fogColor = tex(1,1,1)
-                */
-                skySeq += Math.PI/1000;
-                scene.clearColor = tex(0.5*Math.abs(Math.sin(skySeq)),0,0);
+                if(!isGameover){
+                    //skyWhite();
+                    isGameover = true;
+                }
+                skySeq += Math.PI/(500/animR);
+                scene.clearColor = tex(0.5*Math.abs(Math.sin(skySeq)), 0, 0);
             }
             
             // Render scene
@@ -1833,45 +2115,47 @@
             var pi = scene.pick(can.width/2, can.height/2);
             if(pi.pickedMesh){
                 var nme = pi.pickedMesh.name;
-                if(nme == "logoClick"){
-                    logoClicked(pi.pickedMesh);
+                if(!isGameover){
+                    if(nme == "logoClick"){
+                        logoClicked(pi.pickedMesh);
+                    } else if(/slot[ST]?0/.test(nme)){
+                        chooseSlot(0);
+                        playClick();
+                    } else if(/slot[ST]?1/.test(nme)){
+                        chooseSlot(1);
+                        playClick();
+                    } else if(/slot[ST]?2/.test(nme)){
+                        chooseSlot(2);
+                        playClick();
+                    } else if(/slot[ST]?3/.test(nme)){
+                        chooseSlot(3);
+                        playClick();
+                    } else if(/slot[ST]?4/.test(nme)){
+                        chooseSlot(4);
+                        playClick();
+                    } else if(/l_game[0-9]+/.test(nme)){
+                        focusCamera(0);
+                        playClick();
+                    } else if(/l_options[0-9]+/.test(nme)){
+                        focusCamera(1);
+                        playClick();
+                    } else if(/l_achiv[0-9]+/.test(nme)){
+                        focusCamera(2);
+                        playClick();
+                    }
+                }
+                if(nme == "deleteLabel"){
+                    localStorage.removeItem('BACKUPachiv');
                     playClick();
-                } else if(/slot[ST]?0/.test(nme)){
-                    chooseSlot(0);
+                } else if(nme == "gameoverLabel3"){
                     playClick();
-                } else if(/slot[ST]?1/.test(nme)){
-                    chooseSlot(1);
-                    playClick();
-                } else if(/slot[ST]?2/.test(nme)){
-                    chooseSlot(2);
-                    playClick();
-                } else if(/slot[ST]?3/.test(nme)){
-                    chooseSlot(3);
-                    playClick();
-                } else if(/slot[ST]?4/.test(nme)){
-                    chooseSlot(4);
-                    playClick();
+                    location.reload(); 
                 } else if(/qualityLabel[0-9]+/.test(nme)){
                     switchQuality();
                     playClick();
                 } else if(/voiceLabel[0-9]+/.test(nme)){
                     switchVoice();
                     playClick();
-                } else if(/l_game[0-9]+/.test(nme)){
-                    focusCamera(0);
-                    playClick();
-                } else if(/l_options[0-9]+/.test(nme)){
-                    focusCamera(1);
-                    playClick();
-                } else if(/l_achiv[0-9]+/.test(nme)){
-                    focusCamera(2);
-                    playClick();
-                } else if(nme == "deleteLabel"){
-                    localStorage.removeItem('BACKUPachiv');
-                    playClick();
-                } else if(nme == "gameoverLabel3"){
-                    playClick();
-                    location.reload(); 
                 }
             }
             
